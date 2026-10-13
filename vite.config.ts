@@ -12,17 +12,27 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
+      workbox: {
+        // 한글 폰트 조각(woff2)은 미리 받지 않고, 쓰는 글자만 받아서 오프라인용으로 보관한다
+        runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.destination === 'font',
+            handler: 'CacheFirst',
+            options: { cacheName: 'fonts', expiration: { maxEntries: 120, maxAgeSeconds: 60 * 60 * 24 * 365 } },
+          },
+        ],
+      },
       manifest: {
         name: '헬린이',
         short_name: '헬린이',
-        description: '운동 루틴 관리와 실전 운동 타이머',
+        description: '헬린이를 위한 운동 기록·루틴·휴식 타이머',
         lang: 'ko',
         start_url: '/',
         scope: '/',
         display: 'standalone',
         orientation: 'portrait',
-        background_color: '#0e1013',
-        theme_color: '#0e1013',
+        background_color: '#0b0b0c',
+        theme_color: '#0b0b0c',
         icons: [
           { src: 'pwa-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'pwa-512.png', sizes: '512x512', type: 'image/png' },

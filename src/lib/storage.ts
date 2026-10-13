@@ -1,12 +1,25 @@
-import { seedRoutines } from './seed';
 import type { AppState, Settings } from './types';
 
-const KEY = 'hellini:v1';
+const KEY = 'hellini:v2';
 
-const defaultSettings: Settings = { sound: true, vibrate: true };
+export const defaultSettings: Settings = {
+  sound: true,
+  vibrate: true,
+  defaultRestSec: 90,
+  barKg: 20,
+  weeklyGoal: 3,
+};
 
 export function defaultState(): AppState {
-  return { version: 1, routines: seedRoutines(), history: [], active: null, settings: { ...defaultSettings } };
+  return {
+    version: 2,
+    onboarded: false,
+    routines: [],
+    history: [],
+    active: null,
+    customExercises: [],
+    settings: { ...defaultSettings },
+  };
 }
 
 function isObject(x: unknown): x is Record<string, unknown> {
@@ -15,13 +28,15 @@ function isObject(x: unknown): x is Record<string, unknown> {
 
 /** 저장된 JSON이나 가져온 백업 파일을 검사한다. 모양이 다르면 null */
 export function parseState(x: unknown): AppState | null {
-  if (!isObject(x) || x.version !== 1) return null;
+  if (!isObject(x) || x.version !== 2) return null;
   if (!Array.isArray(x.routines) || !Array.isArray(x.history)) return null;
   return {
-    version: 1,
+    version: 2,
+    onboarded: x.onboarded === true,
     routines: x.routines as AppState['routines'],
     history: x.history as AppState['history'],
     active: isObject(x.active) ? (x.active as unknown as AppState['active']) : null,
+    customExercises: Array.isArray(x.customExercises) ? (x.customExercises as AppState['customExercises']) : [],
     settings: { ...defaultSettings, ...(isObject(x.settings) ? (x.settings as Partial<Settings>) : {}) },
   };
 }

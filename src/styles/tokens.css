@@ -1,0 +1,86 @@
+:root {
+  color-scheme: light;
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --surface-2: #eef0f3;
+  --surface-3: #e3e6eb;
+  --hairline: #e3e5e9;
+  --text: #0b0c0e;
+  --text-2: #5b616b;
+  --text-3: #8d939c;
+  --accent: #2f6bff;
+  --accent-press: #2357d6;
+  --accent-text: #2f6bff;
+  --accent-soft: rgba(47, 107, 255, 0.1);
+  --on-accent: #ffffff;
+  --success: #16a34a;
+  --success-text: #15803d;
+  --success-soft: rgba(22, 163, 74, 0.09);
+  --gold: #e8a400;
+  --gold-text: #a16207;
+  --gold-soft: rgba(232, 164, 0, 0.14);
+  --warmup: #f59e0b;
+  --warmup-text: #b45309;
+  --warmup-soft: rgba(245, 158, 11, 0.14);
+  --work: #f97316;
+  --work-text: #c2410c;
+  --work-soft: rgba(249, 115, 22, 0.12);
+  --danger: #e5484d;
+  --danger-text: #d93036;
+  --scrim: rgba(10, 12, 16, 0.45);
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 1px rgba(16, 24, 40, 0.02);
+  --shadow-float: 0 10px 30px rgba(16, 24, 40, 0.14), 0 2px 6px rgba(16, 24, 40, 0.08);
+  --header-bg: rgba(244, 245, 247, 0.82);
+
+  --r-badge: 6px;
+  --r-control: 10px;
+  --r-card: 16px;
+  --r-sheet: 24px;
+  --r-pill: 999px;
+
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  --tabbar-h: 58px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  --font: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, 'Apple SD Gothic Neo',
+    'Noto Sans KR', 'Malgun Gothic', sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #0b0b0c;
+    --surface: #161618;
+    --surface-2: #232326;
+    --surface-3: #2e2e33;
+    --hairline: rgba(255, 255, 255, 0.08);
+    --text: #f5f5f7;
+    --text-2: #a1a1aa;
+    --text-3: #7a7a83;
+    --accent: #3b74ff;
+    --accent-press: #2f63e0;
+    --accent-text: #7fa6ff;
+    --accent-soft: rgba(77, 130, 255, 0.16);
+    --success: #30d158;
+    --success-text: #4ade80;
+    --success-soft: rgba(48, 209, 88, 0.12);
+    --gold: #ffc93c;
+    --gold-text: #ffd76a;
+    --gold-soft: rgba(255, 201, 60, 0.14);
+    --warmup: #ffb340;
+    --warmup-text: #ffc266;
+    --warmup-soft: rgba(255, 179, 64, 0.14);
+    --work: #ff8a3d;
+    --work-text: #ffa366;
+    --work-soft: rgba(255, 138, 61, 0.14);
+    --danger: #ff6369;
+    --danger-text: #ff7a7f;
+    --scrim: rgba(0, 0, 0, 0.6);
+    --shadow-card: none;
+    --shadow-float: 0 12px 32px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.4);
+    --header-bg: rgba(11, 11, 12, 0.8);
+  }
+}
