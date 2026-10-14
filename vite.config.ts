@@ -3,7 +3,11 @@ import { VitePWA } from 'vite-plugin-pwa';
 import { defineConfig } from 'vitest/config';
 import pkg from './package.json' with { type: 'json' };
 
+// GitHub Pages처럼 하위 경로(/hellini/)에 올릴 때는 BASE_PATH로 지정한다. 기본은 도메인 루트
+const base = process.env.BASE_PATH ?? '/';
+
 export default defineConfig({
+  base,
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
@@ -27,8 +31,8 @@ export default defineConfig({
         short_name: '헬린이',
         description: '헬린이를 위한 운동 기록·루틴·휴식 타이머',
         lang: 'ko',
-        start_url: '/',
-        scope: '/',
+        start_url: base,
+        scope: base,
         display: 'standalone',
         orientation: 'portrait',
         background_color: '#0b0b0c',

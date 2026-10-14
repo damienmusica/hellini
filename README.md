@@ -78,6 +78,10 @@ src/
 
 빌드 결과물은 정적 파일(`dist/`)뿐이라 어디든 올릴 수 있다.
 
+**GitHub Pages (기본)**: `main`에 푸시하면 `.github/workflows/deploy.yml`이 빌드해서 `gh-pages` 브랜치로 내보낸다. 주소는 https://damienmusica.github.io/hellini/ 이다. 레포 Settings → Pages에서 Source가 "Deploy from a branch", 브랜치 `gh-pages` / `/ (root)`로 되어 있어야 한다. 하위 경로에 올리기 때문에 빌드할 때 `BASE_PATH=/hellini/`를 쓴다.
+
+Cloudflare Pages나 Vercel로 도메인 루트에 올릴 때는 `BASE_PATH` 없이 빌드하면 된다.
+
 **Cloudflare Pages**: Workers & Pages → Create → Pages → Connect to Git → 이 레포 선택
 - Framework preset: `Vite` (또는 None)
 - Build command: `npm run build`
