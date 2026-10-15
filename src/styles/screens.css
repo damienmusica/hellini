@@ -300,6 +300,48 @@
   margin: -4px 0 8px;
 }
 
+.goal-card {
+  gap: 10px;
+}
+
+.goal-card .ex-flag {
+  margin: 0;
+}
+
+.trend {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.trend-ok {
+  background: var(--success-soft);
+  color: var(--success-text);
+}
+
+.trend-warn {
+  background: var(--warmup-soft);
+  color: var(--warmup-text);
+}
+
+.goal-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.goal-grid .chip {
+  justify-content: center;
+  padding: 0 6px;
+}
+
+.level-line {
+  margin: -4px 4px 0;
+}
+
 .picker-na {
   color: var(--warmup-text);
 }

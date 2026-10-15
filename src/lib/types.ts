@@ -131,6 +131,28 @@ export interface CustomExercise {
   kind: ExerciseKind;
 }
 
+/** 체성분 기록 (인바디 등). 날짜는 그날 0시 */
+export interface BodyLog {
+  id: string;
+  date: number;
+  weightKg: number;
+  bodyFatPct?: number;
+  skeletalMuscleKg?: number;
+  waistCm?: number;
+  note?: string;
+}
+
+/** 지금 단계의 목표. 영양 목표와 체중 추세 판단에 쓴다 (세트·무게 규칙은 바꾸지 않는다) */
+export type Goal = 'recomp' | 'bulk' | 'cut' | 'maintain';
+
+/** 모두 선택. 비어 있으면 그 기능만 꺼진다 */
+export interface Profile {
+  sex?: 'male' | 'female';
+  birthYear?: number;
+  heightCm?: number;
+  goal?: Goal;
+}
+
 export interface Settings {
   sound: boolean;
   vibrate: boolean;
@@ -147,7 +169,7 @@ export interface Settings {
 }
 
 export interface AppState {
-  version: 3;
+  version: 4;
   /** 첫 실행 질문(온보딩)을 마쳤는지 */
   onboarded: boolean;
   routines: Routine[];
@@ -155,5 +177,8 @@ export interface AppState {
   active: ActiveSession | null;
   customExercises: CustomExercise[];
   places: Place[];
+  /** 최신순 */
+  body: BodyLog[];
+  profile: Profile;
   settings: Settings;
 }

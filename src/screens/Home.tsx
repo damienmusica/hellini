@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Icon } from '../components/Icon';
 import { PlaceSheet } from '../components/PlaceSheet';
 import { WeekStrip } from '../components/WeekStrip';
+import { needsBodyCheck } from '../lib/body';
 import { MAIN_PLACE_ID, unavailableIn } from '../lib/places';
 import {
   doneSets,
@@ -47,9 +48,10 @@ interface Props {
   onOpenWorkout: () => void;
   onOpenSettings: () => void;
   onGoRoutines: () => void;
+  onGoBody?: () => void;
 }
 
-export function Home({ onOpenWorkout, onOpenSettings, onGoRoutines }: Props) {
+export function Home({ onOpenWorkout, onOpenSettings, onGoRoutines, onGoBody }: Props) {
   const { state, dispatch } = useStore();
   const now = Date.now();
   const next = nextRoutine(state.routines, state.history);
@@ -156,6 +158,13 @@ export function Home({ onOpenWorkout, onOpenSettings, onGoRoutines }: Props) {
         </div>
       )}
 
+      {needsBodyCheck(state.body, now) && onGoBody && (
+        <button type="button" className="banner" onClick={onGoBody}>
+          <Icon name="scale" size={18} />
+          <span>체성분을 잰 지 3개월이 넘었어요. 다시 재서 목표를 점검해요.</span>
+          <Icon name="chevronRight" size={16} />
+        </button>
+      )}
       {needsBackup && (
         <button type="button" className="banner" onClick={onOpenSettings}>
           <Icon name="download" size={18} />

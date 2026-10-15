@@ -26,6 +26,8 @@ const TABS: { id: Tab; label: string; icon: IconName }[] = [
 export default function App() {
   const { state } = useStore();
   const [tab, setTab] = useState<Tab>('home');
+  // 홈 배너에서 기록 탭의 특정 화면으로 바로 갈 때
+  const [historyView, setHistoryView] = useState<'log' | 'body' | undefined>(undefined);
   const [workoutOpen, setWorkoutOpen] = useState(state.active !== null);
   const [completedId, setCompletedId] = useState<string | null>(null);
   const [timerRunning, setTimerRunning] = useState(false);
@@ -82,14 +84,22 @@ export default function App() {
 
       <main className="content" hidden={overlay}>
         {tab === 'home' && (
-          <Home onOpenWorkout={() => setWorkoutOpen(true)} onOpenSettings={() => setSettingsOpen(true)} onGoRoutines={() => setTab('routines')} />
+          <Home
+            onOpenWorkout={() => setWorkoutOpen(true)}
+            onOpenSettings={() => setSettingsOpen(true)}
+            onGoRoutines={() => setTab('routines')}
+            onGoBody={() => {
+              setHistoryView('body');
+              setTab('history');
+            }}
+          />
         )}
         {tab === 'routines' && <Routines />}
         {/* 탭을 옮겨도 돌던 타이머가 멈추지 않도록 항상 마운트해 둔다 */}
         <div hidden={tab !== 'timers'}>
           <Timers onRunningChange={setTimerRunning} />
         </div>
-        {tab === 'history' && <History onOpenSettings={() => setSettingsOpen(true)} />}
+        {tab === 'history' && <History onOpenSettings={() => setSettingsOpen(true)} initialView={historyView} />}
       </main>
 
       <ActiveSessionWatcher />

@@ -5,6 +5,8 @@ import { Sheet } from '../components/Sheet';
 import { useToast } from '../components/Toast';
 import { canVibrate, cue } from '../lib/cues';
 import { MAIN_PLACE_ID, markAvailable } from '../lib/places';
+import { GOAL_LABEL } from '../lib/body';
+import { ProfileSheet } from './Body';
 import { defaultState, exportFileName, parseState } from '../lib/storage';
 import { formatDate } from '../lib/stats';
 import { useStore } from '../lib/store';
@@ -29,6 +31,7 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
   const s = state.settings;
   const set = (patch: Partial<typeof s>) => dispatch({ type: 'settings/update', patch });
   const [placeId, setPlaceId] = useState<string | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
   const openPlace = placeId ? state.places.find((p) => p.id === placeId) : undefined;
 
   const exportData = () => {
@@ -117,6 +120,22 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       </div>
+
+      <h3 className="settings-label">내 몸</h3>
+      <div className="group">
+        <button type="button" className="group-row" onClick={() => setProfileOpen(true)}>
+          <span className="group-row-main">
+            <span>프로필 · 목표</span>
+            <span className="t-caption c-3">
+              {[state.profile.sex ? (state.profile.sex === 'male' ? '남' : '여') : null, state.profile.heightCm ? `${state.profile.heightCm}cm` : null, state.profile.goal ? GOAL_LABEL[state.profile.goal] : null]
+                .filter(Boolean)
+                .join(' · ') || '체성분 기록은 기록 탭 → 몸에서'}
+            </span>
+          </span>
+          <Icon name="chevronRight" size={18} />
+        </button>
+      </div>
+      {profileOpen && <ProfileSheet onClose={() => setProfileOpen(false)} />}
 
       <h3 className="settings-label">장소</h3>
       <p className="t-caption c-3 settings-note">운동 중 "기구가 없어요"로 바꾼 종목은 장소마다 기억해요. 여기서 되돌릴 수 있어요.</p>

@@ -234,3 +234,22 @@ test('호텔 짐: 등록 없이 장비만 고르고, 없는 기구 종목을 바
   await page.getByRole('button', { name: '루틴', exact: true }).click();
   await expect(page.getByRole('button', { name: /무분할 A/ }).first()).toContainText('스쿼트');
 });
+
+test('체성분을 넣으면 단계 추천과 영양 목표가 나온다', async ({ page }) => {
+  await onboard(page);
+  await page.getByRole('button', { name: '기록', exact: true }).click();
+  await page.getByRole('tab', { name: '몸' }).click();
+  await page.getByRole('button', { name: '체성분 기록' }).click();
+  await page.getByLabel(/체중/).fill('73.3');
+  await page.getByLabel(/체지방률/).fill('21');
+  await page.getByLabel(/골격근량/).fill('33.1');
+  await page.getByRole('button', { name: '저장' }).click();
+  await expect(page.getByText('73.3kg', { exact: true })).toBeVisible();
+  await expect(page.getByText('2,230').first()).toBeVisible(); // 주 3회 기준 유지 열량 = 목표 열량(목표 없음)
+  await page.getByRole('button', { name: '프로필 · 목표' }).click();
+  await page.getByRole('radio', { name: '남', exact: true }).click();
+  await expect(page.getByRole('dialog').getByText(/추천: 리컴프/)).toBeVisible();
+  await page.getByRole('radio', { name: '리컴프' }).click();
+  await page.getByRole('button', { name: '닫기', exact: true }).click();
+  await expect(page.getByText('130g')).toBeVisible();
+});

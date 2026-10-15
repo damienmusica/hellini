@@ -35,14 +35,16 @@ import {
 } from '../lib/stats';
 import { useStore } from '../lib/store';
 import type { ExerciseLog, Session } from '../lib/types';
+import { BodyView } from './Body';
+import { latestBody, LEVEL_LABEL, strengthLevel } from '../lib/body';
 
-type View = 'log' | 'stats' | 'exercises';
+type View = 'log' | 'stats' | 'exercises' | 'body';
 
 const DAY = 86_400_000;
 
-export function History({ onOpenSettings }: { onOpenSettings: () => void }) {
+export function History({ onOpenSettings, initialView }: { onOpenSettings: () => void; initialView?: View }) {
   const { state } = useStore();
-  const [view, setView] = useState<View>('log');
+  const [view, setView] = useState<View>(initialView ?? 'log');
 
   return (
     <section className="screen">
@@ -58,6 +60,7 @@ export function History({ onOpenSettings }: { onOpenSettings: () => void }) {
             ['log', '운동 기록'],
             ['stats', '통계'],
             ['exercises', '종목별'],
+            ['body', '몸'],
           ] as const
         ).map(([v, label]) => (
           <button key={v} type="button" role="tab" aria-selected={view === v} className={view === v ? 'is-on' : ''} onClick={() => setView(v)}>
@@ -65,7 +68,9 @@ export function History({ onOpenSettings }: { onOpenSettings: () => void }) {
           </button>
         ))}
       </div>
-      {state.history.length === 0 ? (
+      {view === 'body' ? (
+        <BodyView />
+      ) : state.history.length === 0 ? (
         <div className="card empty-card">
           <Icon name="calendar" size={32} />
           <p className="t-headline">아직 기록이 없어요</p>
@@ -631,6 +636,8 @@ function ExerciseSheet({ summary, onClose }: { summary: ExerciseSummary; onClose
     });
 
   const plateau = summary.kind === 'reps' ? plateauSessions(state.history, { exerciseId: summary.key, name: summary.name }, MAIN_PLACE_ID) : 0;
+  const bw = latestBody(state.body)?.weightKg;
+  const level = weighted && bw ? strengthLevel(summary.exerciseId, best!.e1rm, bw, state.profile.sex) : null;
 
   return (
     <Sheet title={summary.name} onClose={onClose} size="full">
@@ -668,6 +675,13 @@ function ExerciseSheet({ summary, onClose }: { summary: ExerciseSummary; onClose
           <span className="t-stat">{logs.length}일</span>
         </div>
       </div>
+      {level && (
+        <p className="t-caption c-2 level-line">
+          체중 대비 <strong>{level.ratio}배</strong> · {LEVEL_LABEL[level.level]}
+          {level.next !== null ? ` · 다음 단계까지 1RM ${level.next}kg` : ''}
+          <span className="c-3"> (대략적인 근력 기준)</span>
+        </p>
+      )}
       {points.length >= 2 ? (
         <div className="card">
           <h3 className="t-headline">{metric} 추이</h3>

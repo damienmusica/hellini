@@ -7,10 +7,12 @@ import { lastLogAt } from './stats';
 import type {
   ActiveSession,
   AppState,
+  BodyLog,
   CustomExercise,
   ExerciseKind,
   ExerciseLog,
   Place,
+  Profile,
   Routine,
   RoutineExercise,
   Session,
@@ -87,6 +89,10 @@ export type Action =
   | { type: 'place/save'; place: Place }
   | { type: 'place/delete'; id: string }
   | { type: 'place/select'; id: string }
+  /** 체성분 기록 추가·수정 (같은 id면 덮어쓴다). 날짜순 유지 */
+  | { type: 'body/save'; log: BodyLog }
+  | { type: 'body/delete'; id: string }
+  | { type: 'profile/update'; patch: Partial<Profile> }
   | { type: 'settings/update'; patch: Partial<Settings> }
   | { type: 'state/replace'; state: AppState };
 
@@ -645,6 +651,17 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'place/select':
       if (!state.places.some((p) => p.id === action.id)) return state;
       return { ...state, settings: { ...state.settings, placeId: action.id } };
+
+    case 'body/save': {
+      const rest = state.body.filter((b) => b.id !== action.log.id);
+      return { ...state, body: [...rest, action.log].sort((a, b) => b.date - a.date) };
+    }
+
+    case 'body/delete':
+      return { ...state, body: state.body.filter((b) => b.id !== action.id) };
+
+    case 'profile/update':
+      return { ...state, profile: { ...state.profile, ...action.patch } };
 
     case 'settings/update':
       return { ...state, settings: { ...state.settings, ...action.patch } };

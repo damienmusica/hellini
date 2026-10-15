@@ -13,10 +13,10 @@ describe('parseState', () => {
     expect(s).toEqual({ ...defaultState(), settings: { ...defaultState().settings, sound: false } });
   });
 
-  it('v2 백업은 기본 장소를 붙여 v3로 올리고, 기록은 그대로 둔다', () => {
+  it('v2 백업은 기본 장소를 붙여 최신 버전으로 올리고, 기록은 그대로 둔다', () => {
     const history = [{ id: 's1', routineName: 'r', startedAt: 1, endedAt: 2, exercises: [] }];
     const s = parseState({ version: 2, routines: [], history, settings: { weeklyGoal: 4 } })!;
-    expect(s.version).toBe(3);
+    expect(s.version).toBe(4);
     expect(s.places.map((p) => p.id)).toEqual(['main']);
     expect(s.settings.placeId).toBe('main');
     expect(s.history).toEqual(history);
