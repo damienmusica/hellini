@@ -37,6 +37,26 @@ export interface SetLog extends SetPlan {
   rpe?: number;
 }
 
+/** 마지막 세트 뒤에 고르는 체감: 여유 있었음 / 적당했음 / 거의 한계였음 */
+export type Effort = 'easy' | 'ok' | 'hard';
+
+/** 종목을 바꾼 이유. place: 장소 프로필에 따라 시작할 때 자동으로 바뀜 */
+export type SwapReason = 'missing' | 'busy' | 'prefer' | 'place';
+
+/** 추천 엔진이 남긴 제안 이력 (같은 입력·버전이면 같은 결과) */
+export interface Suggested {
+  /** 알고리즘 버전 */
+  v: number;
+  code: string;
+  label: string;
+  /** 눌렀을 때 남은 본세트에 넣을 값. 없으면 안내만 */
+  apply?: { field: 'weightKg'; value: number } | { field: 'reps'; values: number[]; weightKg?: number };
+  /** 근거로 쓴 지난 기록의 세션 id */
+  basedOn: string;
+  applied?: boolean;
+  dismissed?: boolean;
+}
+
 export interface ExerciseLog {
   id: string;
   exerciseId?: string;
@@ -47,7 +67,30 @@ export interface ExerciseLog {
   restSec: number;
   note?: string;
   sets: SetLog[];
+  effort?: Effort;
+  suggested?: Suggested;
+  /** 다른 종목 대신 들어왔으면 어디서 왔는지 */
+  swap?: { from: string; reason: SwapReason };
 }
+
+export type Equipment = '바벨' | '덤벨' | '머신' | '케이블' | '맨몸' | '케틀벨' | '스미스' | '기타';
+
+/** 운동하는 장소. 기본 장소(main)는 장비 제한이 없다 */
+export interface Place {
+  id: string;
+  name: string;
+  /** 있는 장비. 없으면 전부 있는 것으로 본다. 맨몸·기타는 항상 가능 */
+  equipment?: Equipment[];
+  /** 이 장소에 기구가 없는 종목 id */
+  unavailable: string[];
+  /** 이 장소에서 시작할 때 자동으로 바꿀 종목: 원래 id → 대신할 id */
+  swaps: Record<string, string>;
+  /** 등록 없이 오늘만 쓰는 장소. 운동을 마치면 지운다 */
+  temp?: boolean;
+}
+
+/** 세션에 남기는 장소 사본 (장소를 지우거나 이름을 바꿔도 기록은 그대로) */
+export type SessionPlace = Pick<Place, 'id' | 'name' | 'equipment'>;
 
 export interface RestTimer {
   endsAt: number;
@@ -72,6 +115,8 @@ export interface Session {
   endedAt?: number;
   note?: string;
   exercises: ExerciseLog[];
+  /** 없으면 기본 장소 */
+  place?: SessionPlace;
 }
 
 export interface ActiveSession extends Session {
@@ -97,15 +142,18 @@ export interface Settings {
   weeklyGoal: number;
   /** 마지막으로 백업(내보내기)한 시각 */
   lastBackupAt?: number;
+  /** 지금 고른 장소 id (places 중 하나) */
+  placeId: string;
 }
 
 export interface AppState {
-  version: 2;
+  version: 3;
   /** 첫 실행 질문(온보딩)을 마쳤는지 */
   onboarded: boolean;
   routines: Routine[];
   history: Session[];
   active: ActiveSession | null;
   customExercises: CustomExercise[];
+  places: Place[];
   settings: Settings;
 }

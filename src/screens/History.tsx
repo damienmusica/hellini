@@ -8,6 +8,8 @@ import { MuscleMap } from '../components/MuscleMap';
 import { PartBadge } from '../components/PartBadge';
 import { Sheet } from '../components/Sheet';
 import { useToast } from '../components/Toast';
+import { MAIN_PLACE_ID } from '../lib/places';
+import { plateauSessions } from '../lib/progression';
 import { bestsByExercise, estimate1RM, muscleSets, sessionPRs } from '../lib/records';
 import {
   bestSet,
@@ -628,8 +630,16 @@ function ExerciseSheet({ summary, onClose }: { summary: ExerciseSummary; onClose
       };
     });
 
+  const plateau = summary.kind === 'reps' ? plateauSessions(state.history, { exerciseId: summary.key, name: summary.name }, MAIN_PLACE_ID) : 0;
+
   return (
     <Sheet title={summary.name} onClose={onClose} size="full">
+      {plateau > 0 && (
+        <p className="ex-flag">
+          <Icon name="info" size={16} />
+          <span>{plateau}번 연속 최고 세트가 제자리예요. 세트를 하나 늘리거나 비슷한 역할의 종목을 섞어 보는 것도 방법이에요. 바꿀지는 직접 정해요.</span>
+        </p>
+      )}
       <div className="stat-tiles">
         {summary.kind === 'time' ? (
           <div className="card">

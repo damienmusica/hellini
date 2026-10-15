@@ -1,10 +1,10 @@
 import { findExercise, weightBasis } from '../../data/exercises';
 import { Icon } from '../../components/Icon';
 import { PartBadge } from '../../components/PartBadge';
-import type { Suggestion } from '../../lib/progression';
+import { formatRepRange } from '../../lib/progression';
 import { trimKg } from '../../lib/stats';
 import { formatSeconds } from '../../lib/timer';
-import type { ExerciseLog, SetLog, SetType, WorkTimer } from '../../lib/types';
+import type { Effort, ExerciseLog, SetLog, SetType, WorkTimer } from '../../lib/types';
 
 export type Field = 'weightKg' | 'reps' | 'durationSec';
 
@@ -22,6 +22,8 @@ export const SET_TYPE_LABEL: Record<SetType, string> = {
 };
 
 const SET_TYPE_SHORT: Record<Exclude<SetType, 'normal'>, string> = { warmup: 'W', drop: 'D', failure: 'F' };
+
+export const EFFORT_LABEL: Record<Effort, string> = { easy: '여유 있었어요', ok: '적당했어요', hard: '거의 한계였어요' };
 
 /** 일반 세트는 1,2,3… 번호, 나머지는 W/D/F */
 export function setLabels(sets: SetLog[]): string[] {
@@ -52,7 +54,10 @@ interface Props {
   work: WorkTimer | null;
   /** 지금 할 세트가 이 종목에 있으면 그 위치 */
   currentSetIdx: number | null;
-  suggestion: Suggestion | null;
+  /** 이전 기록이 다른 장소에서 한 것이면 그 장소 이름 */
+  lastPlaceName?: string;
+  /** 지금 장소에 기구가 없는 종목 */
+  unavailable?: boolean;
   onEdit: (e: Editing) => void;
   onCopyPrev: (setIdx: number, prev: SetLog) => void;
   onToggle: (setIdx: number) => void;
@@ -65,6 +70,8 @@ interface Props {
   onRest: () => void;
   onApplySuggestion: () => void;
   onDismissSuggestion: () => void;
+  onEffort: (effort: Effort) => void;
+  onSwap: () => void;
 }
 
 export function ExerciseCard(p: Props) {
@@ -75,6 +82,12 @@ export function ExerciseCard(p: Props) {
   const firstTime = !last && !isTime && ex.sets.some((s) => s.weightKg > 0) && !ex.sets.some((s) => s.done);
   const isActive = (setIdx: number, field: Field) =>
     editing?.exIdx === exIdx && editing.setIdx === setIdx && editing.field === field;
+  const started = ex.sets.some((s) => s.done && s.type === 'normal');
+  const suggestion = ex.suggested && !ex.suggested.applied && !ex.suggested.dismissed && !started ? ex.suggested : null;
+  const workSets = ex.sets.filter((s) => s.type !== 'warmup');
+  const allDone = workSets.length > 0 && workSets.every((s) => s.done);
+  const firstNormal = ex.sets.find((s) => s.type === 'normal');
+  const pending = ex.sets.some((s) => !s.done);
 
   return (
     <article className="ex-card" aria-label={ex.name}>
@@ -84,6 +97,7 @@ export function ExerciseCard(p: Props) {
           <span className="ex-name">{ex.name}</span>
           <span className="t-caption c-3">
             {info ? `${info.part} · ${info.equipment}${isTime ? '' : ` · ${weightBasis(info.equipment)}`}` : '직접 추가한 종목'}
+            {!isTime && firstNormal && ` · 목표 ${formatRepRange(firstNormal.reps)}`}
           </span>
         </button>
         <button type="button" className="icon-btn is-plain" aria-label={`${ex.name} 메뉴`} onClick={p.onMenu}>
@@ -98,17 +112,39 @@ export function ExerciseCard(p: Props) {
         </button>
       )}
 
+      {ex.swap && (
+        <p className="ex-swap">
+          <Icon name="swap" size={14} /> {ex.swap.from} 대신 ·{' '}
+          {ex.swap.reason === 'place' ? '이 장소 설정' : ex.swap.reason === 'missing' ? '기구 없음' : ex.swap.reason === 'busy' ? '기구 사용 중' : '오늘만'}
+        </p>
+      )}
+
+      {p.unavailable && pending && (
+        <div className="ex-flag">
+          <Icon name="info" size={16} />
+          <span>여기엔 없는 기구예요</span>
+          <button type="button" className="btn btn-sm btn-secondary btn-pill" onClick={p.onSwap}>
+            바꾸기
+          </button>
+        </div>
+      )}
+
       {firstTime && <p className="ex-first">처음 하는 종목이에요. 적힌 무게는 시작 예시라서, 자세가 편한 무게로 바꿔 주세요.</p>}
+      {!firstTime && p.lastPlaceName && !started && (
+        <p className="ex-first">'이전' 칸은 {p.lastPlaceName}에서 한 기록이에요. 여기 기구는 다를 수 있으니 참고만 하세요.</p>
+      )}
 
       {ex.note && <p className="ex-note">{ex.note}</p>}
 
-      {p.suggestion && (
-        <div className="suggest">
+      {suggestion && (
+        <div className="suggest" data-code={suggestion.code}>
           <Icon name="sparkle" size={18} />
-          <span>{p.suggestion.label}</span>
-          <button type="button" className="btn btn-sm btn-primary btn-pill" onClick={p.onApplySuggestion}>
-            적용
-          </button>
+          <span>{suggestion.label}</span>
+          {suggestion.apply && (
+            <button type="button" className="btn btn-sm btn-primary btn-pill" onClick={p.onApplySuggestion}>
+              적용
+            </button>
+          )}
           <button type="button" className="icon-btn is-plain suggest-x" aria-label="제안 닫기" onClick={p.onDismissSuggestion}>
             <Icon name="close" size={16} />
           </button>
@@ -223,6 +259,25 @@ export function ExerciseCard(p: Props) {
       <button type="button" className="btn btn-secondary btn-sm btn-block add-set" onClick={p.onAddSet}>
         <Icon name="plus" size={16} /> 세트 추가
       </button>
+
+      {allDone && (
+        <div className="effort" role="group" aria-label={`${ex.name} 마지막 세트 체감`}>
+          <span className="t-caption c-2">마지막 세트는 어땠어요?</span>
+          <div className="effort-chips">
+            {(Object.keys(EFFORT_LABEL) as Effort[]).map((e) => (
+              <button
+                key={e}
+                type="button"
+                className={`chip${ex.effort === e ? ' is-on' : ''}`}
+                aria-pressed={ex.effort === e}
+                onClick={() => p.onEffort(e)}
+              >
+                {EFFORT_LABEL[e]}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </article>
   );
 }

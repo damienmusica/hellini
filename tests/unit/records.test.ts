@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { instantiateProgram, PROGRAMS, recommendProgram } from '../../src/data/programs';
 import { estimate1RM, sessionPRs, setPRs, bestsByExercise, muscleSets } from '../../src/lib/records';
-import { platesPerSide, suggestProgression, warmupSets } from '../../src/lib/progression';
+import { platesPerSide, warmupSets } from '../../src/lib/progression';
 import { nextRoutine, weekStreak, weekStart } from '../../src/lib/stats';
-import type { ExerciseLog, Routine, Session, SetLog } from '../../src/lib/types';
+import type { Routine, Session, SetLog } from '../../src/lib/types';
 
 const s = (weightKg: number, reps: number, done = true, type: SetLog['type'] = 'normal'): SetLog => ({ type, weightKg, reps, durationSec: 0, done });
 
@@ -44,43 +44,6 @@ describe('기록', () => {
     const m = muscleSets([session('a', 1, [s(60, 5), s(60, 5)])]);
     expect(m.get('chest')).toBe(2);
     expect(m.get('triceps')).toBe(1);
-  });
-});
-
-describe('증량 제안', () => {
-  const current = (weight: number): ExerciseLog => ({
-    id: 'x',
-    exerciseId: 'bench-press',
-    name: '벤치프레스',
-    kind: 'reps',
-    restSec: 90,
-    sets: [s(weight, 8, false), s(weight, 8, false)],
-  });
-
-  it('지난번 목표 횟수를 다 채웠으면 무게를 올리자고 한다', () => {
-    const last = { ...current(40), sets: [s(40, 8), s(40, 9)] };
-    expect(suggestProgression(current(40), last)).toMatchObject({ field: 'weightKg', value: 42.5 });
-  });
-
-  it('계획이 지난번보다 가벼우면 지난번 무게 기준으로 제안한다', () => {
-    const last = { ...current(40), sets: [s(40, 8), s(40, 8)] };
-    expect(suggestProgression(current(20), last)).toMatchObject({ value: 42.5 });
-  });
-
-  it('이미 첫 세트를 했으면 제안하지 않는다', () => {
-    const cur = current(40);
-    cur.sets[0] = { ...cur.sets[0], done: true };
-    expect(suggestProgression(cur, { ...current(40), sets: [s(40, 8), s(40, 8)] })).toBeNull();
-  });
-
-  it('하나라도 못 채웠거나 이미 올렸으면 제안하지 않는다', () => {
-    expect(suggestProgression(current(40), { ...current(40), sets: [s(40, 8), s(40, 6)] })).toBeNull();
-    expect(suggestProgression(current(42.5), { ...current(40), sets: [s(40, 8), s(40, 8)] })).toBeNull();
-  });
-
-  it('맨몸 종목은 횟수를 올리자고 한다', () => {
-    const last = { ...current(0), sets: [s(0, 8), s(0, 8)] };
-    expect(suggestProgression(current(0), last)).toMatchObject({ field: 'reps', value: 9 });
   });
 });
 

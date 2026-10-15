@@ -1,16 +1,23 @@
+import { findExercise } from '../data/exercises';
+import { defaultSetsFor } from '../data/programs';
 import { uid } from './id';
+import { isAvailable, MAIN_PLACE_ID, mainPlace, sessionPlace } from './places';
+import { suggest } from './progression';
+import { lastLogAt } from './stats';
 import type {
   ActiveSession,
   AppState,
   CustomExercise,
   ExerciseKind,
   ExerciseLog,
+  Place,
   Routine,
   RoutineExercise,
   Session,
   SetLog,
   SetPlan,
   Settings,
+  SwapReason,
 } from './types';
 
 export type SetPatch = Partial<Pick<SetLog, 'type' | 'reps' | 'weightKg' | 'durationSec' | 'rpe'>>;
@@ -45,18 +52,23 @@ export type Action =
   | { type: 'session/start'; routine: Routine | null; now: number }
   | { type: 'session/finish'; now: number; apply: ApplyOptions }
   | { type: 'session/discard' }
-  | { type: 'exercise/add'; exercise: NewExercise }
+  | { type: 'exercise/add'; exercise: NewExercise; now?: number }
   /** 남은 계획만 다른 종목으로 바꾼다. 완료한 세트는 원래 종목에 남는다. plan은 새 종목 기준 세트 값 */
-  | { type: 'exercise/replace'; exIdx: number; exercise: ExerciseRef; plan: SetPlan[] }
+  | { type: 'exercise/replace'; exIdx: number; exercise: ExerciseRef; plan: SetPlan[]; reason?: SwapReason; now?: number }
   /** 종목을 잘못 골랐을 때: 완료한 세트까지 통째로 다른 종목으로 정정 */
   | { type: 'exercise/relabel'; exIdx: number; exercise: ExerciseRef }
   /** 오늘은 여기까지: 완료한 세트는 남기고 남은 계획만 뺀다 */
   | { type: 'exercise/skipRemaining'; exIdx: number }
   | { type: 'exercise/remove'; exIdx: number }
   | { type: 'exercise/move'; exIdx: number; dir: -1 | 1 }
-  | { type: 'exercise/update'; exIdx: number; patch: Partial<Pick<ExerciseLog, 'restSec' | 'note'>> }
-  /** 남은 본세트 전체의 무게·횟수를 한 값으로 (증량 제안 적용) */
+  /** 기구를 누가 쓰고 있을 때: 맨 뒤로 미룬다 */
+  | { type: 'exercise/defer'; exIdx: number }
+  | { type: 'exercise/update'; exIdx: number; patch: Partial<Pick<ExerciseLog, 'restSec' | 'note' | 'effort'>> }
+  /** 남은 본세트 전체의 무게·횟수를 한 값으로 */
   | { type: 'exercise/setAll'; exIdx: number; field: 'weightKg' | 'reps'; value: number }
+  /** 저장된 제안을 남은 본세트에 적용하고 이력에 남긴다 */
+  | { type: 'exercise/applySuggestion'; exIdx: number }
+  | { type: 'exercise/dismissSuggestion'; exIdx: number }
   | { type: 'set/update'; exIdx: number; setIdx: number; patch: SetPatch }
   | { type: 'set/complete'; exIdx: number; setIdx: number; now: number }
   | { type: 'set/undo'; exIdx: number; setIdx: number }
@@ -71,6 +83,10 @@ export type Action =
   /** 끝난 운동 기록 정정 (세트 값·종목·삭제) */
   | { type: 'history/replace'; session: Session }
   | { type: 'custom/add'; exercise: CustomExercise }
+  /** 장소 추가·수정 (같은 id면 덮어쓴다) */
+  | { type: 'place/save'; place: Place }
+  | { type: 'place/delete'; id: string }
+  | { type: 'place/select'; id: string }
   | { type: 'settings/update'; patch: Partial<Settings> }
   | { type: 'state/replace'; state: AppState };
 
@@ -100,7 +116,45 @@ function fromRoutineExercise(t: RoutineExercise): ExerciseLog {
   };
 }
 
-export function buildSession(routine: Routine | null, now: number): ActiveSession {
+/** 세션을 만들 때 필요한 주변 정보: 지난 기록(제안 근거)과 장소(자동 교체) */
+export interface SessionContext {
+  history: Session[];
+  place?: Place;
+  now: number;
+}
+
+function placeOf(state: AppState): Place {
+  return state.places.find((p) => p.id === state.settings.placeId) ?? state.places.find((p) => p.id === MAIN_PLACE_ID) ?? mainPlace();
+}
+
+function withSuggestion(e: ExerciseLog, ctx: SessionContext | undefined): ExerciseLog {
+  if (!ctx) return e;
+  const s = suggest(e, ctx.history, ctx.place?.id ?? MAIN_PLACE_ID, ctx.now);
+  return s ? { ...e, suggested: s } : e;
+}
+
+/** 장소 프로필에 "여기서는 이 종목 대신 저걸로"가 있으면 시작할 때 바꿔 둔다. 무게는 대체 종목 자신의 이 장소 기록(없으면 시작값) */
+function swapForPlace(t: RoutineExercise, ctx: SessionContext | undefined): ExerciseLog {
+  const base = fromRoutineExercise(t);
+  const place = ctx?.place;
+  const to = place && t.exerciseId ? place.swaps[t.exerciseId] : undefined;
+  const info = to ? findExercise(to) : undefined;
+  if (!place || !to || !info || isAvailable(place, t)) return base;
+  const plan = defaultSetsFor(info.id, info.kind, lastLogAt(ctx.history, { exerciseId: info.id, name: info.name }, place.id));
+  const n = Math.max(1, t.sets.filter((s) => s.type === 'normal').length);
+  const pick = (i: number) => plan[i] ?? plan.at(-1) ?? FALLBACK_SET;
+  return {
+    ...base,
+    exerciseId: info.id,
+    name: info.name,
+    kind: info.kind,
+    sets: Array.from({ length: n }, (_, i) => logSet(fitSetToKind({ ...pick(i), type: 'normal' }, info.kind))),
+    swap: { from: t.name, reason: 'place' },
+  };
+}
+
+export function buildSession(routine: Routine | null, now: number, ctx?: SessionContext): ActiveSession {
+  const place = ctx?.place;
   return {
     id: uid(),
     routineId: routine?.id,
@@ -108,7 +162,8 @@ export function buildSession(routine: Routine | null, now: number): ActiveSessio
     startedAt: now,
     rest: null,
     work: null,
-    exercises: routine ? routine.exercises.map(fromRoutineExercise) : [],
+    exercises: routine ? routine.exercises.map((t) => withSuggestion(swapForPlace(t, ctx), ctx)) : [],
+    place: place && place.id !== MAIN_PLACE_ID ? sessionPlace(place) : undefined,
   };
 }
 
@@ -293,7 +348,7 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case 'session/start':
       if (state.active) return state;
-      return { ...state, active: buildSession(action.routine, action.now) };
+      return { ...state, active: buildSession(action.routine, action.now, { history: state.history, place: placeOf(state), now: action.now }) };
 
     case 'session/finish': {
       const a = state.active;
@@ -309,15 +364,20 @@ export function reducer(state: AppState, action: Action): AppState {
         endedAt: action.now,
         note: a.note,
         exercises,
+        place: a.place,
       };
       const routines = a.routineId
         ? state.routines.map((r) => (r.id === a.routineId ? applySessionToRoutine(r, a, action.now, action.apply) : r))
         : state.routines;
+      // 등록 없이 쓴 임시 장소는 끝나면 치우고 기본 장소로 돌아온다
+      const temp = a.place ? state.places.find((p) => p.id === a.place!.id)?.temp : false;
       return {
         ...state,
         active: null,
         routines,
         history: exercises.length > 0 ? [session, ...state.history] : state.history,
+        places: temp ? state.places.filter((p) => p.id !== a.place!.id) : state.places,
+        settings: temp ? { ...state.settings, placeId: MAIN_PLACE_ID } : state.settings,
       };
     }
 
@@ -329,14 +389,17 @@ export function reducer(state: AppState, action: Action): AppState {
         ...a,
         exercises: [
           ...a.exercises,
-          {
-            id: uid(),
-            exerciseId: action.exercise.exerciseId,
-            name: action.exercise.name,
-            kind: action.exercise.kind,
-            restSec: action.exercise.restSec,
-            sets: action.exercise.sets.map(logSet),
-          },
+          withSuggestion(
+            {
+              id: uid(),
+              exerciseId: action.exercise.exerciseId,
+              name: action.exercise.name,
+              kind: action.exercise.kind,
+              restSec: action.exercise.restSec,
+              sets: action.exercise.sets.map(logSet),
+            },
+            { history: state.history, place: placeOf(state), now: action.now ?? Date.now() },
+          ),
         ],
       }));
 
@@ -349,16 +412,20 @@ export function reducer(state: AppState, action: Action): AppState {
         const pending = Math.max(1, ex.sets.filter((x) => !x.done && x.type !== 'warmup').length);
         const base = action.plan.filter((p) => p.type !== 'warmup');
         const pick = (i: number) => base[i] ?? base.at(-1) ?? FALLBACK_SET;
-        const next: ExerciseLog = {
-          id: uid(),
-          exerciseId,
-          // 같은 루틴 자리를 대신한다는 표시 (종목이 다르므로 목표 반영 대상은 아님)
-          templateId: ex.templateId,
-          name,
-          kind,
-          restSec: ex.restSec,
-          sets: Array.from({ length: pending }, (_, i) => logSet(fitSetToKind({ ...pick(i), type: 'normal' }, kind))),
-        };
+        const next: ExerciseLog = withSuggestion(
+          {
+            id: uid(),
+            exerciseId,
+            // 같은 루틴 자리를 대신한다는 표시 (종목이 다르므로 목표 반영 대상은 아님)
+            templateId: ex.templateId,
+            name,
+            kind,
+            restSec: ex.restSec,
+            sets: Array.from({ length: pending }, (_, i) => logSet(fitSetToKind({ ...pick(i), type: 'normal' }, kind))),
+            swap: { from: ex.name, reason: action.reason ?? 'prefer' },
+          },
+          { history: state.history, place: placeOf(state), now: action.now ?? Date.now() },
+        );
         const exercises =
           done.length === 0
             ? a.exercises.map((e, i) => (i === action.exIdx ? next : e))
@@ -405,8 +472,36 @@ export function reducer(state: AppState, action: Action): AppState {
         return clearTimers({ ...a, exercises });
       });
 
+    case 'exercise/defer':
+      return withActive(state, (a) => {
+        if (action.exIdx >= a.exercises.length - 1) return a;
+        const exercises = [...a.exercises.filter((_, i) => i !== action.exIdx), a.exercises[action.exIdx]];
+        return clearTimers({ ...a, exercises });
+      });
+
     case 'exercise/update':
       return withActive(state, (a) => mapExercise(a, action.exIdx, (e) => ({ ...e, ...action.patch })));
+
+    case 'exercise/applySuggestion':
+      return withActive(state, (a) =>
+        mapExercise(a, action.exIdx, (e) => {
+          const apply = e.suggested?.apply;
+          if (!e.suggested || !apply) return e;
+          let n = 0;
+          const sets = e.sets.map((s) => {
+            if (s.done || s.type !== 'normal') return s;
+            const i = n++;
+            if (apply.field === 'weightKg') return { ...s, weightKg: apply.value };
+            return { ...s, reps: apply.values[i] ?? apply.values.at(-1) ?? s.reps, weightKg: apply.weightKg ?? s.weightKg };
+          });
+          return { ...e, sets, suggested: { ...e.suggested, applied: true } };
+        }),
+      );
+
+    case 'exercise/dismissSuggestion':
+      return withActive(state, (a) =>
+        mapExercise(a, action.exIdx, (e) => (e.suggested ? { ...e, suggested: { ...e.suggested, dismissed: true } } : e)),
+      );
 
     case 'exercise/setAll':
       return withActive(state, (a) =>
@@ -533,6 +628,23 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case 'custom/add':
       return { ...state, customExercises: [...state.customExercises, action.exercise] };
+
+    case 'place/save': {
+      const exists = state.places.some((p) => p.id === action.place.id);
+      const places = exists ? state.places.map((p) => (p.id === action.place.id ? action.place : p)) : [...state.places, action.place];
+      return { ...state, places };
+    }
+
+    case 'place/delete': {
+      if (action.id === MAIN_PLACE_ID) return state;
+      const places = state.places.filter((p) => p.id !== action.id);
+      const settings = state.settings.placeId === action.id ? { ...state.settings, placeId: MAIN_PLACE_ID } : state.settings;
+      return { ...state, places, settings };
+    }
+
+    case 'place/select':
+      if (!state.places.some((p) => p.id === action.id)) return state;
+      return { ...state, settings: { ...state.settings, placeId: action.id } };
 
     case 'settings/update':
       return { ...state, settings: { ...state.settings, ...action.patch } };

@@ -1,7 +1,10 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
+import { findExercise } from '../data/exercises';
+import { Icon } from '../components/Icon';
 import { Sheet } from '../components/Sheet';
 import { useToast } from '../components/Toast';
 import { canVibrate, cue } from '../lib/cues';
+import { MAIN_PLACE_ID, markAvailable } from '../lib/places';
 import { defaultState, exportFileName, parseState } from '../lib/storage';
 import { formatDate } from '../lib/stats';
 import { useStore } from '../lib/store';
@@ -25,6 +28,8 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const s = state.settings;
   const set = (patch: Partial<typeof s>) => dispatch({ type: 'settings/update', patch });
+  const [placeId, setPlaceId] = useState<string | null>(null);
+  const openPlace = placeId ? state.places.find((p) => p.id === placeId) : undefined;
 
   const exportData = () => {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
@@ -112,6 +117,63 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       </div>
+
+      <h3 className="settings-label">장소</h3>
+      <p className="t-caption c-3 settings-note">운동 중 "기구가 없어요"로 바꾼 종목은 장소마다 기억해요. 여기서 되돌릴 수 있어요.</p>
+      <div className="group">
+        {state.places
+          .filter((p) => !p.temp)
+          .map((p) => (
+            <button key={p.id} type="button" className="group-row" onClick={() => setPlaceId(p.id)}>
+              <span className="group-row-main">
+                <span>{p.name}</span>
+                <span className="t-caption c-3">
+                  {p.equipment ? p.equipment.join(' · ') : '기구 제한 없음'}
+                  {p.unavailable.length > 0 ? ` · 없는 기구 ${p.unavailable.length}종목` : ''}
+                </span>
+              </span>
+              <Icon name="chevronRight" size={18} />
+            </button>
+          ))}
+      </div>
+      {openPlace && (
+        <Sheet title={openPlace.name} onClose={() => setPlaceId(null)}>
+          {openPlace.unavailable.length === 0 ? (
+            <p className="c-2">이 장소에서 뺀 종목이 없어요.</p>
+          ) : (
+            <div className="group">
+              {openPlace.unavailable.map((id) => {
+                const to = openPlace.swaps[id];
+                return (
+                  <div key={id} className="group-row">
+                    <span className="group-row-main">
+                      <span>{findExercise(id)?.name ?? id}</span>
+                      <span className="t-caption c-3">{to ? `시작할 때 ${findExercise(to)?.name ?? to}(으)로 바꿈` : '기구 없음'}</span>
+                    </span>
+                    <button type="button" className="btn btn-sm btn-secondary btn-pill" onClick={() => dispatch({ type: 'place/save', place: markAvailable(openPlace, id) })}>
+                      다시 있어요
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {openPlace.id !== MAIN_PLACE_ID && (
+            <button
+              type="button"
+              className="btn btn-danger-text btn-block"
+              onClick={() => {
+                if (window.confirm(`'${openPlace.name}' 장소를 지울까요? 여기서 한 기록은 남아요.`)) {
+                  dispatch({ type: 'place/delete', id: openPlace.id });
+                  setPlaceId(null);
+                }
+              }}
+            >
+              장소 삭제
+            </button>
+          )}
+        </Sheet>
+      )}
 
       <h3 className="settings-label">데이터</h3>
       <p className="t-caption c-3 settings-note">

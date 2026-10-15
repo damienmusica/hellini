@@ -1,3 +1,5 @@
+import type { Equipment } from '../lib/types';
+
 /**
  * 기본 운동 종목 라이브러리.
  * muscle: 주동근(primary)·협응근(secondary) — 부위별 볼륨·근육 지도 계산에 쓴다.
@@ -27,7 +29,7 @@ export type Muscle =
 
 export type BodyPart = '가슴' | '등' | '어깨' | '하체' | '팔' | '복근' | '유산소' | '전신';
 
-export type Equipment = '바벨' | '덤벨' | '머신' | '케이블' | '맨몸' | '케틀벨' | '스미스' | '기타';
+export type { Equipment };
 
 export interface ExerciseInfo {
   id: string;

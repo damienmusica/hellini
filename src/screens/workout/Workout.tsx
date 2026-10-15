@@ -8,20 +8,24 @@ import { ActionSheet, Sheet, type ActionItem } from '../../components/Sheet';
 import { useToast } from '../../components/Toast';
 import { cue, haptic } from '../../lib/cues';
 import { useNow } from '../../lib/hooks';
-import { suggestProgression, warmupSets, weightIncrement } from '../../lib/progression';
+import { isAvailable, lastLogEntry, MAIN_PLACE_ID, markUnavailable, placeKey } from '../../lib/places';
+import { warmupSets, weightIncrement } from '../../lib/progression';
 import { bestsByExercise, PR_LABEL, prSetIndexes, runningBest, setPRs } from '../../lib/records';
 import { nextPendingSet, routineChanges, type ApplyOptions } from '../../lib/reducer';
-import { doneSets, formatDuration, formatSet, formatVolume, lastLogFor, logKey, sessionVolume, totalSets } from '../../lib/stats';
+import { doneSets, formatDuration, formatSet, formatVolume, lastLogAt, logKey, sessionVolume, totalSets } from '../../lib/stats';
 import { useStore } from '../../lib/store';
 import { formatElapsed } from '../../lib/timer';
-import type { ActiveSession, SetType } from '../../lib/types';
+import type { ActiveSession, SetType, SwapReason } from '../../lib/types';
 import { ExerciseCard, setLabels, SET_TYPE_LABEL, type Editing } from './ExerciseCard';
 import { RestBar, RestSheet } from './RestBar';
 import { NoteSheet, PlateSheet, RestTimeSheet, TipSheet } from './sheets';
 
 type SheetState =
   | { kind: 'add' }
-  | { kind: 'replace'; exIdx: number }
+  | { kind: 'why'; exIdx: number }
+  | { kind: 'replace'; exIdx: number; reason: SwapReason }
+  /** 기구 없음으로 바꾼 뒤: 이 장소 프로필에 남길지 */
+  | { kind: 'scope'; fromId: string; fromName: string; toId: string; toName: string }
   | { kind: 'relabel'; exIdx: number }
   | { kind: 'menu'; exIdx: number }
   | { kind: 'setMenu'; exIdx: number; setIdx: number }
@@ -50,10 +54,14 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
   const [editing, setEditing] = useState<Editing | null>(null);
   const [sheet, setSheet] = useState<SheetState>(null);
   const [restOpen, setRestOpen] = useState(false);
-  const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
 
+  const here = placeKey(a);
+  const place = state.places.find((p) => p.id === here);
+  const placeName = a.place?.name ?? place?.name ?? '평소 헬스장';
   const bests = useMemo(() => bestsByExercise(state.history), [state.history]);
-  const lastLogs = useMemo(() => a.exercises.map((e) => lastLogFor(state.history, e)), [state.history, a.exercises]);
+  // 이전 기록은 같은 장소 것을 먼저, 없으면 다른 장소 것 (참고용으로 표시하고 그렇다고 알려준다)
+  const lastEntries = useMemo(() => a.exercises.map((e) => lastLogEntry(state.history, e, here)), [state.history, a.exercises, here]);
+  const lastLogs = lastEntries.map((x) => x?.log);
   const prSets = useMemo(() => a.exercises.map((e) => prSetIndexes(bests.get(logKey(e)), e)), [a.exercises, bests]);
 
   const done = doneSets(a);
@@ -126,7 +134,7 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
 
   const addExercises = (picked: { exerciseId: string; name: string; kind: 'reps' | 'time' }[]) => {
     for (const p of picked) {
-      const last = lastLogFor(state.history, p);
+      const last = lastLogAt(state.history, p, here);
       dispatch({
         type: 'exercise/add',
         exercise: {
@@ -136,6 +144,7 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
           restSec: p.kind === 'time' ? 45 : state.settings.defaultRestSec,
           sets: defaultSetsFor(p.exerciseId, p.kind, last),
         },
+        now: Date.now(),
       });
     }
     setSheet(null);
@@ -175,7 +184,7 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
       items.push({
         label: doneCount > 0 ? '남은 세트만 다른 종목으로' : '다른 종목으로 바꾸기',
         icon: 'swap',
-        onSelect: () => setSheet({ kind: 'replace', exIdx }),
+        onSelect: () => setSheet({ kind: 'why', exIdx }),
       });
     }
     if (doneCount > 0) {
@@ -229,6 +238,29 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
     return items;
   };
 
+  const whyMenu = (exIdx: number): ActionItem[] => {
+    const ex = a.exercises[exIdx];
+    const canDefer = exIdx < a.exercises.length - 1 && !ex.sets.some((s) => s.done);
+    const items: ActionItem[] = [
+      { label: '기구가 없어요', icon: 'close', onSelect: () => setSheet({ kind: 'replace', exIdx, reason: 'missing' }) },
+    ];
+    if (canDefer) {
+      items.push({
+        label: '누가 쓰고 있어요 → 순서만 뒤로',
+        icon: 'arrowDown',
+        onSelect: () => {
+          dispatch({ type: 'exercise/defer', exIdx });
+          toast({ icon: 'arrowDown', title: `${ex.name}을(를) 맨 뒤로 미뤘어요` });
+        },
+      });
+    }
+    items.push(
+      { label: canDefer ? '누가 쓰고 있어요 → 다른 종목으로' : '누가 쓰고 있어요', icon: 'swap', onSelect: () => setSheet({ kind: 'replace', exIdx, reason: 'busy' }) },
+      { label: '다른 운동이 하고 싶어요', icon: 'sparkle', onSelect: () => setSheet({ kind: 'replace', exIdx, reason: 'prefer' }) },
+    );
+    return items;
+  };
+
   const editingSet = editing ? a.exercises[editing.exIdx]?.sets[editing.setIdx] : undefined;
   const editingEx = editing ? a.exercises[editing.exIdx] : undefined;
 
@@ -239,7 +271,10 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
           <Icon name="chevronDown" size={22} />
         </button>
         <div className="workout-header-title">
-          <span className="t-caption c-2">{a.routineName}</span>
+          <span className="t-caption c-2">
+            {a.routineName}
+            {here !== MAIN_PLACE_ID && ` · ${placeName}`}
+          </span>
           <span className="workout-clock num" aria-label="운동 시간">
             {formatElapsed(now - a.startedAt)}
           </span>
@@ -277,7 +312,8 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
 
       <div className="ex-list">
         {a.exercises.map((ex, exIdx) => {
-          const suggestion = dismissed.has(ex.id) ? null : suggestProgression(ex, lastLogs[exIdx]);
+          const entry = lastEntries[exIdx];
+          const lastPlaceName = entry && placeKey(entry.session) !== here ? (entry.session.place?.name ?? '평소 헬스장') : undefined;
           return (
             <ExerciseCard
               key={ex.id}
@@ -288,7 +324,8 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
               editing={editing}
               work={a.work}
               currentSetIdx={current?.exIdx === exIdx ? current.setIdx : null}
-              suggestion={suggestion}
+              lastPlaceName={lastPlaceName}
+              unavailable={!isAvailable(place ?? a.place, ex)}
               onEdit={setEditing}
               onCopyPrev={(setIdx, prev) =>
                 dispatch({
@@ -313,12 +350,17 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
               onTip={() => setSheet({ kind: 'tip', exIdx })}
               onRest={() => setSheet({ kind: 'rest', exIdx })}
               onApplySuggestion={() => {
-                if (!suggestion) return;
-                dispatch({ type: 'exercise/setAll', exIdx, field: suggestion.field, value: suggestion.value });
-                setDismissed((d) => new Set(d).add(ex.id));
-                toast({ tone: 'success', icon: 'sparkle', title: '좋아요, 오늘은 한 단계 위로!' });
+                const code = ex.suggested?.code;
+                dispatch({ type: 'exercise/applySuggestion', exIdx });
+                toast({
+                  tone: 'success',
+                  icon: 'sparkle',
+                  title: code === 'add-weight' || code === 'add-reps' ? '좋아요, 오늘은 한 단계 위로!' : '적용했어요',
+                });
               }}
-              onDismissSuggestion={() => setDismissed((d) => new Set(d).add(ex.id))}
+              onDismissSuggestion={() => dispatch({ type: 'exercise/dismissSuggestion', exIdx })}
+              onEffort={(effort) => dispatch({ type: 'exercise/update', exIdx, patch: { effort } })}
+              onSwap={() => setSheet({ kind: 'replace', exIdx, reason: 'missing' })}
             />
           );
         })}
@@ -370,10 +412,14 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
       )}
 
       {sheet?.kind === 'add' && <ExercisePicker mode="add" onPick={addExercises} onClose={() => setSheet(null)} />}
+      {sheet?.kind === 'why' && a.exercises[sheet.exIdx] && (
+        <ActionSheet title={`${a.exercises[sheet.exIdx].name}, 왜 바꿔요?`} items={whyMenu(sheet.exIdx)} onClose={() => setSheet(null)} />
+      )}
       {sheet?.kind === 'replace' && a.exercises[sheet.exIdx] && (
         <ExercisePicker
           mode="replace"
           current={a.exercises[sheet.exIdx]}
+          place={place ?? a.place}
           note={
             a.exercises[sheet.exIdx].sets.some((s) => s.done)
               ? `완료한 ${a.exercises[sheet.exIdx].sets.filter((s) => s.done).length}세트는 ${a.exercises[sheet.exIdx].name} 기록으로 남고, 남은 세트만 바뀌어요. 오늘만 적용돼요.`
@@ -382,23 +428,49 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
           onPick={([p]) => {
             const ex = a.exercises[sheet.exIdx];
             const kept = ex.sets.filter((s) => s.done).length;
-            // 새 종목 무게는 그 종목 자신의 기록(없으면 시작값)으로: 원래 종목 무게를 옮기지 않는다
+            // 새 종목 무게는 그 종목 자신의 이 장소 기록(없으면 시작값)으로: 원래 종목 무게를 옮기지 않는다
             dispatch({
               type: 'exercise/replace',
               exIdx: sheet.exIdx,
               exercise: p,
-              plan: defaultSetsFor(p.exerciseId, p.kind, lastLogFor(state.history, p)),
+              plan: defaultSetsFor(p.exerciseId, p.kind, lastLogAt(state.history, p, here)),
+              reason: sheet.reason,
+              now: Date.now(),
             });
-            setSheet(null);
             toast({
               tone: 'success',
               icon: 'swap',
               title: `${p.name}(으)로 바꿨어요`,
               body: kept > 0 ? `완료한 ${kept}세트는 ${ex.name} 기록으로 남겼어요` : undefined,
             });
+            // 등록된 장소에서 기구가 없어 바꿨으면, 다음부터 여기서는 자동으로 바꿀지 묻는다
+            if (sheet.reason === 'missing' && place && !place.temp && ex.exerciseId && !place.unavailable.includes(ex.exerciseId)) {
+              setSheet({ kind: 'scope', fromId: ex.exerciseId, fromName: ex.name, toId: p.exerciseId, toName: p.name });
+            } else setSheet(null);
           }}
           onClose={() => setSheet(null)}
         />
+      )}
+      {sheet?.kind === 'scope' && place && (
+        <Sheet title={`${placeName}에 ${sheet.fromName} 기구가 없나요?`} onClose={() => setSheet(null)}>
+          <p className="c-2">다음부터 여기서 운동할 때 {sheet.fromName}을(를) {sheet.toName}(으)로 자동으로 바꿔 둘 수 있어요. 기본 루틴은 그대로예요.</p>
+          <div className="btn-row">
+            <button type="button" className="btn btn-secondary btn-lg" onClick={() => setSheet(null)}>
+              오늘만
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary btn-lg"
+              onClick={() => {
+                dispatch({ type: 'place/save', place: markUnavailable(place, sheet.fromId, sheet.toId) });
+                toast({ tone: 'success', icon: 'check', title: `${placeName}에서는 ${sheet.toName}(으)로 할게요`, body: '설정 → 장소에서 되돌릴 수 있어요' });
+                setSheet(null);
+              }}
+            >
+              이 장소에서는 항상
+            </button>
+          </div>
+        </Sheet>
       )}
       {sheet?.kind === 'relabel' && a.exercises[sheet.exIdx] && (
         <ExercisePicker
@@ -472,8 +544,10 @@ function FinishSheet({ a, onClose, onFinished }: { a: ActiveSession; onClose: ()
   const done = doneSets(a);
   const pending = totalSets(a) - done;
   const changes = routine && done > 0 ? routineChanges(routine, a) : { targets: [], structure: [] };
-  // 목표(무게·횟수)는 올라간 경우만 반영되므로 기본으로 켜고, 종목 구성은 오늘만 쓰는 게 기본
-  const [apply, setApply] = useState<ApplyOptions>({ targets: true, structure: false });
+  const away = placeKey(a) !== MAIN_PLACE_ID;
+  // 목표(무게·횟수)는 올라간 경우만 반영되므로 기본으로 켜고, 종목 구성은 오늘만 쓰는 게 기본.
+  // 다른 장소 기록은 기구가 달라 비교가 안 되니 둘 다 끈다
+  const [apply, setApply] = useState<ApplyOptions>({ targets: !away, structure: false });
 
   if (done === 0) {
     return (
@@ -511,6 +585,7 @@ function FinishSheet({ a, onClose, onFinished }: { a: ActiveSession; onClose: ()
       {routine && (changes.targets.length > 0 || changes.structure.length > 0) && (
         <div className="apply-box">
           <p className="t-caption c-2">'{routine.name}' 기본 루틴에 반영할 것</p>
+          {away && <p className="t-caption c-3">{a.place?.name}에서 한 기록이라 기본으로 반영하지 않아요. 기구가 같으면 켜도 돼요.</p>}
           {changes.targets.length > 0 && (
             <label className="group-row toggle-row">
               <span className="group-row-main">

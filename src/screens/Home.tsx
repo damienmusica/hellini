@@ -1,5 +1,8 @@
+import { useState } from 'react';
 import { Icon } from '../components/Icon';
+import { PlaceSheet } from '../components/PlaceSheet';
 import { WeekStrip } from '../components/WeekStrip';
+import { MAIN_PLACE_ID, unavailableIn } from '../lib/places';
 import {
   doneSets,
   formatDate,
@@ -57,6 +60,10 @@ export function Home({ onOpenWorkout, onOpenSettings, onGoRoutines }: Props) {
   const lastOfNext = next ? state.history.find((s) => s.routineId === next.id) : undefined;
   const needsBackup =
     state.history.length >= 5 && (!state.settings.lastBackupAt || now - state.settings.lastBackupAt > 30 * DAY);
+  const [placeOpen, setPlaceOpen] = useState(false);
+  const place = state.places.find((p) => p.id === state.settings.placeId);
+  const away = place && place.id !== MAIN_PLACE_ID;
+  const missing = next && place ? unavailableIn(place, next.exercises) : [];
 
   const start = (routine: Routine | null) => {
     if (state.active) {
@@ -128,6 +135,12 @@ export function Home({ onOpenWorkout, onOpenSettings, onGoRoutines }: Props) {
               </span>
             )}
           </div>
+          <button type="button" className={`place-chip${away ? ' is-away' : ''}`} onClick={() => setPlaceOpen(true)} aria-label={`장소: ${place?.name ?? '평소 헬스장'}`}>
+            <Icon name="pin" size={14} />
+            {place?.name ?? '평소 헬스장'}
+            {missing.length > 0 && <span className="place-chip-note">· {missing.length}종목 기구 없음</span>}
+            <Icon name="chevronDown" size={14} />
+          </button>
           <button type="button" className="btn btn-primary btn-lg btn-block" onClick={() => start(next)}>
             <Icon name="play" size={16} /> 운동 시작
           </button>
@@ -181,6 +194,14 @@ export function Home({ onOpenWorkout, onOpenSettings, onGoRoutines }: Props) {
       <button type="button" className="btn btn-secondary btn-lg btn-block free-start" onClick={() => start(null)}>
         <Icon name="plus" size={18} /> 루틴 없이 자유 운동
       </button>
+      {!next && !state.active && (
+        <button type="button" className={`place-chip${away ? ' is-away' : ''}`} onClick={() => setPlaceOpen(true)} aria-label={`장소: ${place?.name ?? '평소 헬스장'}`}>
+          <Icon name="pin" size={14} />
+          {place?.name ?? '평소 헬스장'}
+          <Icon name="chevronDown" size={14} />
+        </button>
+      )}
+      {placeOpen && <PlaceSheet routine={next} onClose={() => setPlaceOpen(false)} />}
 
       {latest && (
         <>

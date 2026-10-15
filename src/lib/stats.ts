@@ -1,4 +1,5 @@
 import { findExercise, type BodyPart } from '../data/exercises';
+import { lastLogEntry } from './places';
 import type { ExerciseLog, Routine, Session, SetLog } from './types';
 
 const DAY = 86_400_000;
@@ -34,14 +35,14 @@ export function logKey(e: { exerciseId?: string; name: string }): string {
   return e.exerciseId ?? e.name.trim().toLowerCase();
 }
 
-/** history는 최신순. 같은 종목의 가장 최근 기록 */
-export function lastLogFor(history: Session[], e: { exerciseId?: string; name: string }): ExerciseLog | undefined {
-  const key = logKey(e);
-  for (const session of history) {
-    const log = session.exercises.find((x) => logKey(x) === key && x.sets.some((s) => s.done));
-    if (log) return log;
-  }
-  return undefined;
+/** history는 최신순. 같은 종목의 가장 최근 기록. place를 주면 그 장소 기록을 먼저, 없으면 다른 장소 기록 */
+export function lastLogFor(history: Session[], e: { exerciseId?: string; name: string }, place?: string): ExerciseLog | undefined {
+  return lastLogEntry(history, e, place)?.log;
+}
+
+/** 그 장소에서 한 기록만 (다른 장소 무게를 끌어오지 않는다) */
+export function lastLogAt(history: Session[], e: { exerciseId?: string; name: string }, place: string): ExerciseLog | undefined {
+  return lastLogEntry(history, e, place, true)?.log;
 }
 
 export function formatSet(kind: ExerciseLog['kind'], s: Pick<SetLog, 'weightKg' | 'reps' | 'durationSec'>): string {

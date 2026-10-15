@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { bestsByExercise } from '../../src/lib/records';
 import { reducer, routineChanges } from '../../src/lib/reducer';
 import { defaultState } from '../../src/lib/storage';
-import { suggestProgression } from '../../src/lib/progression';
 import { lastLogFor } from '../../src/lib/stats';
 import type { AppState, Routine, SetPlan } from '../../src/lib/types';
 
@@ -137,8 +136,9 @@ describe('P1: 끝난 기록을 고칠 수 있고, 통계와 다음 추천이 따
     expect(s.history[0].id).toBe(fixed.id);
     expect(bestsByExercise(s.history).get('squat')?.weight).toBe(30);
 
+    // 다음 세션의 제안은 고친 30kg 기준: 목표 10~13회라 같은 무게(30kg)로 한 번씩 더
     const next = reducer(s, { type: 'session/start', routine, now: 700_000 }).active!;
-    expect(suggestProgression(next.exercises[0], lastLogFor(s.history, next.exercises[0]))?.value).toBe(35);
+    expect(next.exercises[0].suggested).toMatchObject({ code: 'add-reps', apply: { field: 'reps', values: [11, 11, 11], weightKg: 30 }, basedOn: fixed.id });
   });
 
   it('세트를 다 지운 종목은 기록에서 빠진다', () => {
@@ -180,6 +180,6 @@ describe('시간이 없어 중간에 끝낸 날은 실패로 보지 않는다', 
     // 목표 반영을 켜도 덜 한 세트 때문에 계획 무게가 깎이지 않는다
     expect(s.routines[0].exercises[0].sets.map((x) => x.weightKg)).toEqual([25, 25, 25]);
     const next = reducer(s, { type: 'session/start', routine: s.routines[0], now: 700_000 }).active!;
-    expect(suggestProgression(next.exercises[0], lastLogFor(s.history, next.exercises[0]))).toBeNull();
+    expect(next.exercises[0].suggested).toBeUndefined();
   });
 });

@@ -271,6 +271,39 @@
   gap: 4px;
 }
 
+.place-chip {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 12px;
+  padding: 6px 10px 6px 8px;
+  border: none;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.place-chip.is-away {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.place-chip-note {
+  color: var(--warmup-text);
+}
+
+.free-start + .place-chip {
+  align-self: center;
+  margin: -4px 0 8px;
+}
+
+.picker-na {
+  color: var(--warmup-text);
+}
+
 .start-btn {
   background: var(--accent-soft);
   color: var(--accent-text);

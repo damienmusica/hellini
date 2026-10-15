@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { BODY_PARTS, EXERCISES, findExercise, type BodyPart } from '../data/exercises';
 import { uid } from '../lib/id';
+import { isAvailable } from '../lib/places';
 import { useStore } from '../lib/store';
-import type { ExerciseKind } from '../lib/types';
+import type { ExerciseKind, Place, SessionPlace } from '../lib/types';
 import { rankSubstitutes } from '../lib/substitutes';
 import { Icon } from './Icon';
 import { PartBadge } from './PartBadge';
@@ -47,20 +48,22 @@ interface Props {
   current?: { exerciseId?: string; name: string };
   /** 시트 위쪽에 보여줄 안내 (적용 범위 등) */
   note?: string;
+  /** 지금 장소. 없는 기구 종목은 추천에서 빼고 목록에 표시한다 */
+  place?: Place | SessionPlace;
   onPick: (picked: PickedExercise[]) => void;
   onClose: () => void;
 }
 
 const TITLE = { add: '운동 추가', replace: '다른 종목으로 바꾸기', relabel: '실제로 한 종목 고르기' } as const;
 
-export function ExercisePicker({ mode, current, note, onPick, onClose }: Props) {
+export function ExercisePicker({ mode, current, note, place, onPick, onClose }: Props) {
   const { state, dispatch } = useStore();
   const currentInfo = findExercise(current?.exerciseId ?? current?.name);
   const [query, setQuery] = useState('');
   const [part, setPart] = useState<BodyPart | '최근' | '전체'>('전체');
   const suggestions = useMemo(
-    () => (mode === 'replace' && current ? rankSubstitutes(current, state.history) : []),
-    [mode, current, state.history],
+    () => (mode === 'replace' && current ? rankSubstitutes(current, state.history, { place }) : []),
+    [mode, current, state.history, place],
   );
   const [selected, setSelected] = useState<Item[]>([]);
   const [creating, setCreating] = useState(false);
@@ -166,6 +169,7 @@ export function ExercisePicker({ mode, current, note, onPick, onClose }: Props) 
                   <span className="t-caption c-3">
                     {item.part} · {item.equipment}
                     {item.kind === 'time' ? ' · 시간' : ''}
+                    {place && !isAvailable(place, item) && <span className="picker-na"> · 여기 없는 기구</span>}
                   </span>
                 </span>
                 {mode === 'add' && <span className={`check-dot${on ? ' is-on' : ''}`}>{on && <Icon name="check" size={16} strokeWidth={3} />}</span>}
