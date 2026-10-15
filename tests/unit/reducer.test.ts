@@ -110,7 +110,7 @@ describe('운동 종료', () => {
     let s = reducer(started(), { type: 'set/insertWarmups', exIdx: 0, sets: [set(20, 10, 'warmup')] });
     s = reducer(s, { type: 'set/complete', exIdx: 0, setIdx: 0, now: 5_000 });
     s = reducer(s, { type: 'set/complete', exIdx: 0, setIdx: 1, now: 10_000 });
-    s = reducer(s, { type: 'session/finish', now: 600_000, updateRoutine: false });
+    s = reducer(s, { type: 'session/finish', now: 600_000, apply: { targets: false, structure: false } });
     expect(s.active).toBeNull();
     expect(s.history).toHaveLength(1);
     expect(s.history[0].exercises[0].sets).toHaveLength(2);
@@ -118,16 +118,16 @@ describe('운동 종료', () => {
   });
 
   it('완료한 세트가 없으면 기록하지 않는다', () => {
-    const s = reducer(started(), { type: 'session/finish', now: 600_000, updateRoutine: false });
+    const s = reducer(started(), { type: 'session/finish', now: 600_000, apply: { targets: false, structure: false } });
     expect(s.history).toHaveLength(0);
   });
 
-  it('루틴에 반영하면 오늘 한 세트 구성·무게가 다음 계획이 된다', () => {
+  it('구성까지 반영하면 오늘 늘린 세트 수와 무게가 다음 계획이 된다', () => {
     let s = started();
     s = reducer(s, { type: 'set/update', exIdx: 0, setIdx: 0, patch: { weightKg: 50 } });
     s = reducer(s, { type: 'set/add', exIdx: 0 });
     for (const i of [0, 1, 2]) s = reducer(s, { type: 'set/complete', exIdx: 0, setIdx: i, now: 10_000 + i });
-    s = reducer(s, { type: 'session/finish', now: 600_000, updateRoutine: true });
+    s = reducer(s, { type: 'session/finish', now: 600_000, apply: { targets: true, structure: true } });
     const r = s.routines[0];
     expect(r.exercises[0].sets.map((x) => x.weightKg)).toEqual([50, 50, 50]);
     expect(r.exercises[0].id).toBe('t1');
@@ -135,23 +135,23 @@ describe('운동 종료', () => {
     expect(r.exercises[1]).toEqual(routine.exercises[1]);
   });
 
-  it('계획보다 세트를 덜 했으면 남은 세트는 오늘 무게로 남긴다', () => {
+  it('목표 반영은 한 세트만 바꾸고, 하지 않은 세트는 계획값을 지킨다', () => {
     let s = started();
     s = reducer(s, { type: 'set/update', exIdx: 0, setIdx: 0, patch: { weightKg: 45 } });
     s = reducer(s, { type: 'set/complete', exIdx: 0, setIdx: 0, now: 10_000 });
-    s = reducer(s, { type: 'session/finish', now: 600_000, updateRoutine: true });
-    expect(s.routines[0].exercises[0].sets.map((x) => x.weightKg)).toEqual([45, 45]);
+    s = reducer(s, { type: 'session/finish', now: 600_000, apply: { targets: true, structure: false } });
+    expect(s.routines[0].exercises[0].sets.map((x) => x.weightKg)).toEqual([45, 40]);
   });
 
   it('시간 종목으로 바꾸면 기본 시간이 채워진다', () => {
     let s = started();
-    s = reducer(s, { type: 'exercise/replace', exIdx: 0, exercise: { exerciseId: 'plank', name: '플랭크', kind: 'time' } });
+    s = reducer(s, { type: 'exercise/replace', exIdx: 0, exercise: { exerciseId: 'plank', name: '플랭크', kind: 'time' }, plan: [] });
     expect(s.active!.exercises[0].sets[0].durationSec).toBe(30);
   });
 
   it('applySessionToRoutine은 루틴 이름과 id를 유지한다', () => {
     const a = started().active!;
-    const r = applySessionToRoutine(routine, a, 99);
+    const r = applySessionToRoutine(routine, a, 99, { targets: true, structure: true });
     expect(r.id).toBe('r1');
     expect(r.name).toBe('테스트 루틴');
     expect(r.updatedAt).toBe(99);

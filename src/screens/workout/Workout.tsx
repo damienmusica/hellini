@@ -10,7 +10,7 @@ import { cue, haptic } from '../../lib/cues';
 import { useNow } from '../../lib/hooks';
 import { suggestProgression, warmupSets, weightIncrement } from '../../lib/progression';
 import { bestsByExercise, PR_LABEL, prSetIndexes, runningBest, setPRs } from '../../lib/records';
-import { sessionDiffersFromRoutine } from '../../lib/reducer';
+import { nextPendingSet, routineChanges, type ApplyOptions } from '../../lib/reducer';
 import { doneSets, formatDuration, formatSet, formatVolume, lastLogFor, logKey, sessionVolume, totalSets } from '../../lib/stats';
 import { useStore } from '../../lib/store';
 import { formatElapsed } from '../../lib/timer';
@@ -22,6 +22,7 @@ import { NoteSheet, PlateSheet, RestTimeSheet, TipSheet } from './sheets';
 type SheetState =
   | { kind: 'add' }
   | { kind: 'replace'; exIdx: number }
+  | { kind: 'relabel'; exIdx: number }
   | { kind: 'menu'; exIdx: number }
   | { kind: 'setMenu'; exIdx: number; setIdx: number }
   | { kind: 'tip'; exIdx: number }
@@ -58,6 +59,37 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
   const done = doneSets(a);
   const total = totalSets(a);
   const volume = sessionVolume(a);
+
+  // 지금 할 세트: 가장 최근에 완료한 세트의 다음 (없으면 처음 남은 세트)
+  const current = useMemo(() => {
+    let lastEx = -1;
+    let lastSet = -1;
+    let lastAt = -1;
+    for (const [i, e] of a.exercises.entries()) {
+      for (const [j, s] of e.sets.entries()) {
+        if (s.done && (s.completedAt ?? 0) >= lastAt) [lastEx, lastSet, lastAt] = [i, j, s.completedAt ?? 0];
+      }
+    }
+    if (lastEx !== -1) return nextPendingSet(a.exercises, lastEx, lastSet);
+    const i = a.exercises.findIndex((e) => e.sets.some((s) => !s.done));
+    return i === -1 ? null : { exIdx: i, setIdx: a.exercises[i].sets.findIndex((s) => !s.done) };
+  }, [a.exercises]);
+
+  // 지금 할 세트가 화면 밖이면 "지금 할 세트로" 버튼을 띄운다
+  const [currentOffscreen, setCurrentOffscreen] = useState<'up' | 'down' | null>(null);
+  useEffect(() => {
+    const el = document.querySelector('.set-row.is-current');
+    if (!el) {
+      setCurrentOffscreen(null);
+      return;
+    }
+    const io = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) setCurrentOffscreen(null);
+      else setCurrentOffscreen(entry.boundingClientRect.top < 0 ? 'up' : 'down');
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [current?.exIdx, current?.setIdx, a.exercises.length]);
 
   useEffect(() => {
     if (!a.rest && !a.work) setRestOpen(false);
@@ -136,10 +168,29 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
     if (info?.equipment === '바벨' || info?.equipment === '스미스') {
       items.push({ label: '원판 계산기', icon: 'scale', onSelect: () => setSheet({ kind: 'plates', exIdx }) });
     }
-    items.push(
-      { label: ex.note ? '메모 수정' : '메모 남기기', icon: 'note', onSelect: () => setSheet({ kind: 'note', exIdx }) },
-      { label: '다른 종목으로 바꾸기', icon: 'swap', onSelect: () => setSheet({ kind: 'replace', exIdx }) },
-    );
+    const doneCount = ex.sets.filter((s) => s.done).length;
+    const pendingCount = ex.sets.length - doneCount;
+    items.push({ label: ex.note ? '메모 수정' : '메모 남기기', icon: 'note', onSelect: () => setSheet({ kind: 'note', exIdx }) });
+    if (pendingCount > 0) {
+      items.push({
+        label: doneCount > 0 ? '남은 세트만 다른 종목으로' : '다른 종목으로 바꾸기',
+        icon: 'swap',
+        onSelect: () => setSheet({ kind: 'replace', exIdx }),
+      });
+    }
+    if (doneCount > 0) {
+      items.push({ label: '종목 정정 (한 세트 포함)', icon: 'edit', onSelect: () => setSheet({ kind: 'relabel', exIdx }) });
+      if (pendingCount > 0) {
+        items.push({
+          label: '오늘은 여기까지 (남은 세트 빼기)',
+          icon: 'check',
+          onSelect: () => {
+            setEditing(null);
+            dispatch({ type: 'exercise/skipRemaining', exIdx });
+          },
+        });
+      }
+    }
     if (exIdx > 0) items.push({ label: '위로 옮기기', icon: 'arrowUp', onSelect: () => dispatch({ type: 'exercise/move', exIdx, dir: -1 }) });
     if (exIdx < a.exercises.length - 1)
       items.push({ label: '아래로 옮기기', icon: 'arrowDown', onSelect: () => dispatch({ type: 'exercise/move', exIdx, dir: 1 }) });
@@ -236,6 +287,7 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
               prSets={prSets[exIdx]}
               editing={editing}
               work={a.work}
+              currentSetIdx={current?.exIdx === exIdx ? current.setIdx : null}
               suggestion={suggestion}
               onEdit={setEditing}
               onCopyPrev={(setIdx, prev) =>
@@ -287,6 +339,15 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
         </button>
       </div>
 
+      {!editing && currentOffscreen && (
+        <button
+          type="button"
+          className={`jump-current${a.rest || a.work ? ' above-bar' : ''}`}
+          onClick={() => document.querySelector('.set-row.is-current')?.scrollIntoView({ block: 'center', behavior: 'smooth' })}
+        >
+          <Icon name={currentOffscreen === 'up' ? 'arrowUp' : 'arrowDown'} size={16} /> 지금 할 세트
+        </button>
+      )}
       {!editing && <RestBar a={a} now={now} onExpand={() => setRestOpen(true)} />}
       {restOpen && <RestSheet a={a} now={now} onClose={() => setRestOpen(false)} />}
 
@@ -309,12 +370,43 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
       )}
 
       {sheet?.kind === 'add' && <ExercisePicker mode="add" onPick={addExercises} onClose={() => setSheet(null)} />}
-      {sheet?.kind === 'replace' && (
+      {sheet?.kind === 'replace' && a.exercises[sheet.exIdx] && (
         <ExercisePicker
           mode="replace"
           current={a.exercises[sheet.exIdx]}
+          note={
+            a.exercises[sheet.exIdx].sets.some((s) => s.done)
+              ? `완료한 ${a.exercises[sheet.exIdx].sets.filter((s) => s.done).length}세트는 ${a.exercises[sheet.exIdx].name} 기록으로 남고, 남은 세트만 바뀌어요. 오늘만 적용돼요.`
+              : '오늘 운동에만 적용돼요. 기본 루틴은 마칠 때 따로 고를 수 있어요.'
+          }
           onPick={([p]) => {
-            dispatch({ type: 'exercise/replace', exIdx: sheet.exIdx, exercise: p });
+            const ex = a.exercises[sheet.exIdx];
+            const kept = ex.sets.filter((s) => s.done).length;
+            // 새 종목 무게는 그 종목 자신의 기록(없으면 시작값)으로: 원래 종목 무게를 옮기지 않는다
+            dispatch({
+              type: 'exercise/replace',
+              exIdx: sheet.exIdx,
+              exercise: p,
+              plan: defaultSetsFor(p.exerciseId, p.kind, lastLogFor(state.history, p)),
+            });
+            setSheet(null);
+            toast({
+              tone: 'success',
+              icon: 'swap',
+              title: `${p.name}(으)로 바꿨어요`,
+              body: kept > 0 ? `완료한 ${kept}세트는 ${ex.name} 기록으로 남겼어요` : undefined,
+            });
+          }}
+          onClose={() => setSheet(null)}
+        />
+      )}
+      {sheet?.kind === 'relabel' && a.exercises[sheet.exIdx] && (
+        <ExercisePicker
+          mode="relabel"
+          current={a.exercises[sheet.exIdx]}
+          note={`종목을 잘못 골랐을 때 쓰세요. ${a.exercises[sheet.exIdx].name}에 기록한 세트가 모두 고른 종목 기록으로 바뀌어요.`}
+          onPick={([p]) => {
+            dispatch({ type: 'exercise/relabel', exIdx: sheet.exIdx, exercise: p });
             setSheet(null);
           }}
           onClose={() => setSheet(null)}
@@ -362,13 +454,26 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
   );
 }
 
+function ChangeList({ items }: { items: string[] }) {
+  const shown = items.slice(0, 4);
+  return (
+    <ul className="change-list">
+      {shown.map((x) => (
+        <li key={x}>{x}</li>
+      ))}
+      {items.length > shown.length && <li className="c-3">외 {items.length - shown.length}개</li>}
+    </ul>
+  );
+}
+
 function FinishSheet({ a, onClose, onFinished }: { a: ActiveSession; onClose: () => void; onFinished: (id: string) => void }) {
   const { state, dispatch } = useStore();
   const routine = state.routines.find((r) => r.id === a.routineId);
   const done = doneSets(a);
   const pending = totalSets(a) - done;
-  const changed = routine !== undefined && done > 0 && sessionDiffersFromRoutine(routine, a);
-  const [updateRoutine, setUpdateRoutine] = useState(true);
+  const changes = routine && done > 0 ? routineChanges(routine, a) : { targets: [], structure: [] };
+  // 목표(무게·횟수)는 올라간 경우만 반영되므로 기본으로 켜고, 종목 구성은 오늘만 쓰는 게 기본
+  const [apply, setApply] = useState<ApplyOptions>({ targets: true, structure: false });
 
   if (done === 0) {
     return (
@@ -402,18 +507,48 @@ function FinishSheet({ a, onClose, onFinished }: { a: ActiveSession; onClose: ()
           <strong className="num">{formatVolume(sessionVolume(a))}</strong>
         </div>
       </div>
-      {pending > 0 && <p className="t-caption c-2">완료하지 않은 {pending}세트는 기록에서 빠져요.</p>}
-      {changed && (
-        <label className="group-row toggle-row">
-          <span className="group-row-main">
-            <span>루틴에 오늘 기록 반영</span>
-            <span className="t-caption c-3">다음에 '{routine.name}'을 시작하면 오늘 무게·횟수로 채워져요</span>
-          </span>
-          <span className="switch">
-            <input type="checkbox" checked={updateRoutine} onChange={(e) => setUpdateRoutine(e.target.checked)} />
-            <span />
-          </span>
-        </label>
+      {pending > 0 && <p className="t-caption c-2">완료하지 않은 {pending}세트는 기록에서 빠져요. 실패로 치지 않아요.</p>}
+      {routine && (changes.targets.length > 0 || changes.structure.length > 0) && (
+        <div className="apply-box">
+          <p className="t-caption c-2">'{routine.name}' 기본 루틴에 반영할 것</p>
+          {changes.targets.length > 0 && (
+            <label className="group-row toggle-row">
+              <span className="group-row-main">
+                <span>다음 목표 올리기</span>
+                <ChangeList items={changes.targets} />
+              </span>
+              <span className="switch">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  aria-label="다음 목표 올리기"
+                  checked={apply.targets}
+                  onChange={(e) => setApply((x) => ({ ...x, targets: e.target.checked }))}
+                />
+                <span />
+              </span>
+            </label>
+          )}
+          {changes.structure.length > 0 && (
+            <label className="group-row toggle-row">
+              <span className="group-row-main">
+                <span>종목 구성도 바꾸기</span>
+                <ChangeList items={changes.structure} />
+                <span className="t-caption c-3">끄면 오늘 바꾼 종목은 오늘만 적용돼요</span>
+              </span>
+              <span className="switch">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  aria-label="종목 구성도 바꾸기"
+                  checked={apply.structure}
+                  onChange={(e) => setApply((x) => ({ ...x, structure: e.target.checked }))}
+                />
+                <span />
+              </span>
+            </label>
+          )}
+        </div>
       )}
       <div className="btn-row">
         <button type="button" className="btn btn-secondary btn-lg" onClick={onClose}>
@@ -423,7 +558,11 @@ function FinishSheet({ a, onClose, onFinished }: { a: ActiveSession; onClose: ()
           type="button"
           className="btn btn-primary btn-lg"
           onClick={() => {
-            dispatch({ type: 'session/finish', now: Date.now(), updateRoutine: changed && updateRoutine });
+            dispatch({
+              type: 'session/finish',
+              now: Date.now(),
+              apply: { targets: apply.targets && changes.targets.length > 0, structure: apply.structure && changes.structure.length > 0 },
+            });
             onFinished(a.id);
           }}
         >

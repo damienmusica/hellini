@@ -1,4 +1,4 @@
-import { findExercise } from '../../data/exercises';
+import { findExercise, weightBasis } from '../../data/exercises';
 import { Icon } from '../../components/Icon';
 import { PartBadge } from '../../components/PartBadge';
 import type { Suggestion } from '../../lib/progression';
@@ -50,6 +50,8 @@ interface Props {
   prSets: Set<number>;
   editing: Editing | null;
   work: WorkTimer | null;
+  /** 지금 할 세트가 이 종목에 있으면 그 위치 */
+  currentSetIdx: number | null;
   suggestion: Suggestion | null;
   onEdit: (e: Editing) => void;
   onCopyPrev: (setIdx: number, prev: SetLog) => void;
@@ -70,6 +72,7 @@ export function ExerciseCard(p: Props) {
   const info = findExercise(ex.exerciseId ?? ex.name);
   const labels = setLabels(ex.sets);
   const isTime = ex.kind === 'time';
+  const firstTime = !last && !isTime && ex.sets.some((s) => s.weightKg > 0) && !ex.sets.some((s) => s.done);
   const isActive = (setIdx: number, field: Field) =>
     editing?.exIdx === exIdx && editing.setIdx === setIdx && editing.field === field;
 
@@ -79,7 +82,9 @@ export function ExerciseCard(p: Props) {
         <PartBadge exerciseId={ex.exerciseId} name={ex.name} part={info?.part} />
         <button type="button" className="ex-title" onClick={p.onTip}>
           <span className="ex-name">{ex.name}</span>
-          <span className="t-caption c-3">{info ? `${info.part} · ${info.equipment}` : '직접 추가한 종목'}</span>
+          <span className="t-caption c-3">
+            {info ? `${info.part} · ${info.equipment}${isTime ? '' : ` · ${weightBasis(info.equipment)}`}` : '직접 추가한 종목'}
+          </span>
         </button>
         <button type="button" className="icon-btn is-plain" aria-label={`${ex.name} 메뉴`} onClick={p.onMenu}>
           <Icon name="more" size={22} strokeWidth={3} />
@@ -92,6 +97,8 @@ export function ExerciseCard(p: Props) {
           <span>{info.tip}</span>
         </button>
       )}
+
+      {firstTime && <p className="ex-first">처음 하는 종목이에요. 적힌 무게는 시작 예시라서, 자세가 편한 무게로 바꿔 주세요.</p>}
 
       {ex.note && <p className="ex-note">{ex.note}</p>}
 
@@ -135,7 +142,12 @@ export function ExerciseCard(p: Props) {
           const running = p.work?.exIdx === exIdx && p.work.setIdx === i;
           const name = `${ex.name} ${labels[i]}세트`;
           return (
-            <div key={i} role="row" className={`set-row${s.done ? ' is-done' : ''}${running ? ' is-running' : ''}`}>
+            <div
+              key={i}
+              role="row"
+              aria-current={p.currentSetIdx === i ? 'step' : undefined}
+              className={`set-row${s.done ? ' is-done' : ''}${running ? ' is-running' : ''}${p.currentSetIdx === i ? ' is-current' : ''}`}
+            >
               <button
                 type="button"
                 className={`set-label set-${s.type}`}

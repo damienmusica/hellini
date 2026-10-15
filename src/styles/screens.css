@@ -1190,3 +1190,24 @@
 .danger-row {
   color: var(--danger-text);
 }
+
+/* ---------- history edit ---------- */
+
+.history-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.history-edit.has-keypad {
+  padding-bottom: 320px;
+}
+
+.ex-card.flat {
+  background: var(--surface-2);
+  box-shadow: none;
+}
+
+.ex-card.flat .set-cell {
+  background: var(--surface);
+}

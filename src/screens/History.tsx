@@ -1,10 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { BODY_PARTS, findExercise, type BodyPart } from '../data/exercises';
 import { BarList, ColumnChart, LineChart } from '../components/Charts';
+import { ExercisePicker } from '../components/ExercisePicker';
 import { Icon } from '../components/Icon';
+import { Keypad } from '../components/Keypad';
 import { MuscleMap } from '../components/MuscleMap';
 import { PartBadge } from '../components/PartBadge';
 import { Sheet } from '../components/Sheet';
+import { useToast } from '../components/Toast';
 import { bestsByExercise, estimate1RM, muscleSets, sessionPRs } from '../lib/records';
 import {
   bestSet,
@@ -29,7 +32,7 @@ import {
   weekStreak,
 } from '../lib/stats';
 import { useStore } from '../lib/store';
-import type { Session } from '../lib/types';
+import type { ExerciseLog, Session } from '../lib/types';
 
 type View = 'log' | 'stats' | 'exercises';
 
@@ -220,13 +223,178 @@ function SessionCard({ session, onOpen }: { session: Session; onOpen: () => void
   );
 }
 
+type EditField = 'weightKg' | 'reps' | 'durationSec';
+
 function SessionSheet({ session, onClose }: { session: Session; onClose: () => void }) {
   const { state, dispatch } = useStore();
-  const prs = sessionPRs(session, state.history);
+  const toast = useToast();
+  // 수정 후에도 최신 기록을 보여준다
+  const live = state.history.find((h) => h.id === session.id) ?? session;
+  const [draft, setDraft] = useState<Session | null>(null);
+  const [editing, setEditing] = useState<{ exIdx: number; setIdx: number; field: EditField } | null>(null);
+  const [relabel, setRelabel] = useState<number | null>(null);
+  const prs = sessionPRs(live, state.history);
+
+  useEffect(() => {
+    if (editing) document.querySelector('.history-edit .set-cell.is-editing')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [editing]);
+
+  const updateEx = (exIdx: number, fn: (e: ExerciseLog) => ExerciseLog) =>
+    setDraft((d) => (d ? { ...d, exercises: d.exercises.map((e, i) => (i === exIdx ? fn(e) : e)) } : d));
+
+  const save = () => {
+    if (!draft) return;
+    const empty = draft.exercises.every((e) => e.sets.length === 0);
+    if (empty && !window.confirm('세트를 모두 지웠어요. 이 운동 기록을 삭제할까요?')) return;
+    dispatch({ type: 'history/replace', session: draft });
+    setDraft(null);
+    setEditing(null);
+    if (empty) onClose();
+    else toast({ tone: 'success', icon: 'check', title: '기록을 고쳤어요', body: '통계와 다음 추천에 바로 반영돼요' });
+  };
+
+  if (draft) {
+    const editingEx = editing ? draft.exercises[editing.exIdx] : undefined;
+    const editingSet = editing && editingEx ? editingEx.sets[editing.setIdx] : undefined;
+    return (
+      <Sheet
+        title="기록 고치기"
+        onClose={() => {
+          if (window.confirm('고친 내용을 저장하지 않고 닫을까요?')) {
+            setDraft(null);
+            setEditing(null);
+          }
+        }}
+        size="full"
+        footer={
+          <div className="btn-row">
+            <button
+              type="button"
+              className="btn btn-secondary btn-lg"
+              onClick={() => {
+                setDraft(null);
+                setEditing(null);
+              }}
+            >
+              취소
+            </button>
+            <button type="button" className="btn btn-primary btn-lg" onClick={save}>
+              저장
+            </button>
+          </div>
+        }
+      >
+        <div className={`history-edit${editing ? ' has-keypad' : ''}`}>
+          <p className="t-caption c-2">
+            {formatDate(draft.startedAt)} · {draft.routineName}. 무게·횟수를 누르면 고칠 수 있어요.
+          </p>
+          {draft.exercises.map((e, exIdx) => {
+            const isTime = e.kind === 'time';
+            return (
+              <article key={e.id} className="ex-card flat" aria-label={`${e.name} 기록`}>
+                <header className="ex-head">
+                  <PartBadge exerciseId={e.exerciseId} name={e.name} />
+                  <span className="ex-title">
+                    <span className="ex-name">{e.name}</span>
+                    <span className="t-caption c-3">{e.sets.length}세트</span>
+                  </span>
+                  <button type="button" className="btn btn-sm btn-ghost" onClick={() => setRelabel(exIdx)}>
+                    종목 정정
+                  </button>
+                </header>
+                <div className={`set-table plan${isTime ? ' is-time' : ''}`} role="table" aria-label={`${e.name} 세트`}>
+                  {e.sets.map((x, setIdx) => {
+                    const active = (f: EditField) => editing?.exIdx === exIdx && editing.setIdx === setIdx && editing.field === f;
+                    const name = `${e.name} ${setIdx + 1}세트`;
+                    return (
+                      <div key={setIdx} className="set-row" role="row">
+                        <span className={`set-label set-${x.type}`}>{x.type === 'warmup' ? 'W' : setIdx + 1}</span>
+                        {isTime ? (
+                          <button
+                            type="button"
+                            className={`set-cell num${active('durationSec') ? ' is-editing' : ''}`}
+                            aria-label={`${name} 시간 ${x.durationSec}초`}
+                            onClick={() => setEditing({ exIdx, setIdx, field: 'durationSec' })}
+                          >
+                            {x.durationSec}
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className={`set-cell num${active('weightKg') ? ' is-editing' : ''}`}
+                              aria-label={`${name} 무게 ${trimKg(x.weightKg)}kg`}
+                              onClick={() => setEditing({ exIdx, setIdx, field: 'weightKg' })}
+                            >
+                              {trimKg(x.weightKg)}
+                            </button>
+                            <button
+                              type="button"
+                              className={`set-cell num${active('reps') ? ' is-editing' : ''}`}
+                              aria-label={`${name} 횟수 ${x.reps}회`}
+                              onClick={() => setEditing({ exIdx, setIdx, field: 'reps' })}
+                            >
+                              {x.reps}
+                            </button>
+                          </>
+                        )}
+                        <button
+                          type="button"
+                          className="set-check is-remove"
+                          aria-label={`${name} 삭제`}
+                          onClick={() => {
+                            setEditing(null);
+                            updateEx(exIdx, (ex) => ({ ...ex, sets: ex.sets.filter((_, i) => i !== setIdx) }));
+                          }}
+                        >
+                          <Icon name="minus" size={18} strokeWidth={2.6} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                  {e.sets.length === 0 && <p className="t-caption c-3">세트를 모두 지웠어요. 저장하면 이 종목은 기록에서 빠져요.</p>}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+        {editing && editingEx && editingSet && (
+          <Keypad
+            key={`${editing.exIdx}-${editing.setIdx}-${editing.field}`}
+            label={`${editingEx.name} ${editing.setIdx + 1}세트 · ${editing.field === 'weightKg' ? '무게' : editing.field === 'reps' ? '횟수' : '시간'}`}
+            value={editingSet[editing.field]}
+            unit={editing.field === 'weightKg' ? 'kg' : editing.field === 'reps' ? '회' : '초'}
+            decimal={editing.field === 'weightKg'}
+            step={editing.field === 'weightKg' ? 2.5 : editing.field === 'reps' ? 1 : 5}
+            max={editing.field === 'durationSec' ? 3600 : 999}
+            onChange={(v) =>
+              updateEx(editing.exIdx, (ex) => ({ ...ex, sets: ex.sets.map((x, i) => (i === editing.setIdx ? { ...x, [editing.field]: v } : x)) }))
+            }
+            nextLabel="완료"
+            onNext={() => setEditing(null)}
+            onClose={() => setEditing(null)}
+          />
+        )}
+        {relabel !== null && draft.exercises[relabel] && (
+          <ExercisePicker
+            mode="relabel"
+            current={draft.exercises[relabel]}
+            note={`${draft.exercises[relabel].name} 기록 전체를 고른 종목으로 바꿔요.`}
+            onPick={([p]) => {
+              updateEx(relabel, (ex) => ({ ...ex, exerciseId: p.exerciseId, name: p.name, kind: p.kind }));
+              setRelabel(null);
+            }}
+            onClose={() => setRelabel(null)}
+          />
+        )}
+      </Sheet>
+    );
+  }
+
   return (
-    <Sheet title={session.routineName} onClose={onClose} size="full">
+    <Sheet title={live.routineName} onClose={onClose} size="full">
       <p className="t-caption c-2">
-        {formatDate(session.startedAt)} {formatTime(session.startedAt)} · {formatDuration(sessionDuration(session))} · {formatVolume(sessionVolume(session))}
+        {formatDate(live.startedAt)} {formatTime(live.startedAt)} · {formatDuration(sessionDuration(live))} · {formatVolume(sessionVolume(live))}
       </p>
       {prs.length > 0 && (
         <div className="pr-row">
@@ -237,9 +405,9 @@ function SessionSheet({ session, onClose }: { session: Session; onClose: () => v
           ))}
         </div>
       )}
-      <MuscleMap values={muscleSets([session])} />
+      <MuscleMap values={muscleSets([live])} />
       <ul className="group detail-list">
-        {session.exercises.map((e) => (
+        {live.exercises.map((e) => (
           <li key={e.id} className="group-row">
             <PartBadge exerciseId={e.exerciseId} name={e.name} />
             <span className="group-row-main">
@@ -249,12 +417,15 @@ function SessionSheet({ session, onClose }: { session: Session; onClose: () => v
           </li>
         ))}
       </ul>
+      <button type="button" className="btn btn-tinted btn-lg btn-block" onClick={() => setDraft(structuredClone(live))}>
+        <Icon name="edit" size={18} /> 기록 고치기
+      </button>
       <button
         type="button"
         className="btn btn-danger-text btn-block"
         onClick={() => {
           if (window.confirm('이 운동 기록을 삭제할까요?')) {
-            dispatch({ type: 'history/delete', id: session.id });
+            dispatch({ type: 'history/delete', id: live.id });
             onClose();
           }
         }}

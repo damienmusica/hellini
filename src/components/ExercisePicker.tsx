@@ -3,6 +3,7 @@ import { BODY_PARTS, EXERCISES, findExercise, type BodyPart } from '../data/exer
 import { uid } from '../lib/id';
 import { useStore } from '../lib/store';
 import type { ExerciseKind } from '../lib/types';
+import { rankSubstitutes } from '../lib/substitutes';
 import { Icon } from './Icon';
 import { PartBadge } from './PartBadge';
 import { Sheet } from './Sheet';
@@ -40,18 +41,27 @@ function matches(item: Item, q: string): boolean {
 }
 
 interface Props {
-  mode: 'add' | 'replace';
-  /** 교체 모드에서 지금 종목 — 같은 부위를 먼저 보여준다 */
+  /** add: 여러 개 추가, replace: 남은 계획을 바꿀 종목, relabel: 잘못 고른 종목 정정 */
+  mode: 'add' | 'replace' | 'relabel';
+  /** 교체·정정 모드에서 지금 종목 — 같은 역할 종목을 먼저 추천한다 */
   current?: { exerciseId?: string; name: string };
+  /** 시트 위쪽에 보여줄 안내 (적용 범위 등) */
+  note?: string;
   onPick: (picked: PickedExercise[]) => void;
   onClose: () => void;
 }
 
-export function ExercisePicker({ mode, current, onPick, onClose }: Props) {
+const TITLE = { add: '운동 추가', replace: '다른 종목으로 바꾸기', relabel: '실제로 한 종목 고르기' } as const;
+
+export function ExercisePicker({ mode, current, note, onPick, onClose }: Props) {
   const { state, dispatch } = useStore();
   const currentInfo = findExercise(current?.exerciseId ?? current?.name);
   const [query, setQuery] = useState('');
-  const [part, setPart] = useState<BodyPart | '최근' | '전체'>(currentInfo?.part ?? '전체');
+  const [part, setPart] = useState<BodyPart | '최근' | '전체'>('전체');
+  const suggestions = useMemo(
+    () => (mode === 'replace' && current ? rankSubstitutes(current, state.history) : []),
+    [mode, current, state.history],
+  );
   const [selected, setSelected] = useState<Item[]>([]);
   const [creating, setCreating] = useState(false);
 
@@ -77,7 +87,7 @@ export function ExercisePicker({ mode, current, onPick, onClose }: Props) {
   }, [all, part, query, recentIds, currentInfo]);
 
   const toggle = (item: Item) => {
-    if (mode === 'replace') {
+    if (mode !== 'add') {
       onPick([item]);
       return;
     }
@@ -88,7 +98,7 @@ export function ExercisePicker({ mode, current, onPick, onClose }: Props) {
 
   return (
     <Sheet
-      title={mode === 'replace' ? '대체 종목 고르기' : '운동 추가'}
+      title={TITLE[mode]}
       onClose={onClose}
       size="full"
       footer={
@@ -117,8 +127,31 @@ export function ExercisePicker({ mode, current, onPick, onClose }: Props) {
           </button>
         ))}
       </div>
-      {mode === 'replace' && currentInfo && part === currentInfo.part && !query && (
-        <p className="t-caption c-2 picker-hint">'{currentInfo.name}' 대신 할 수 있는 {currentInfo.part} 운동이에요.</p>
+      {note && <p className="t-caption c-2 picker-hint">{note}</p>}
+
+      {suggestions.length > 0 && !query && part === '전체' && (
+        <section aria-label="추천 대체 운동">
+          <h3 className="picker-section">'{currentInfo?.name}' 대신 추천</h3>
+          <ul className="sub-cards">
+            {suggestions.map((sub) => (
+              <li key={sub.info.id}>
+                <button
+                  type="button"
+                  className="sub-card"
+                  onClick={() => onPick([{ exerciseId: sub.info.id, name: sub.info.name, kind: sub.info.kind }])}
+                >
+                  <span className={`sub-match m${sub.match}`}>{sub.reason}</span>
+                  <span className="sub-name">{sub.info.name}</span>
+                  <span className="t-caption c-3">
+                    {sub.info.part} · {sub.info.equipment}
+                  </span>
+                  <span className="t-caption c-2">{sub.lastText ? `지난번 ${sub.lastText}` : '처음 해요'}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <h3 className="picker-section">전체 종목</h3>
+        </section>
       )}
 
       <ul className="picker-list">
@@ -151,7 +184,7 @@ export function ExercisePicker({ mode, current, onPick, onClose }: Props) {
             dispatch({ type: 'custom/add', exercise: c });
             setCreating(false);
             const item: Item = { exerciseId: c.id, name: c.name, kind: c.kind, part: c.part, equipment: '직접 추가', en: '' };
-            if (mode === 'replace') onPick([item]);
+            if (mode !== 'add') onPick([item]);
             else setSelected((s) => [...s, item]);
           }}
         />

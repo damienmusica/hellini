@@ -23,16 +23,35 @@ export interface NewExercise {
   sets: SetPlan[];
 }
 
+export interface ExerciseRef {
+  exerciseId?: string;
+  name: string;
+  kind: ExerciseKind;
+}
+
+/** 운동을 마칠 때 기본 루틴에 무엇을 반영할지. 둘 다 끄면 오늘만 적용 */
+export interface ApplyOptions {
+  /** 같은 종목의 목표 무게·횟수를 오늘 기록으로 */
+  targets: boolean;
+  /** 오늘 바꾼·추가한·뺀 종목과 늘린 세트 수까지 */
+  structure: boolean;
+}
+
 export type Action =
   | { type: 'routine/save'; routine: Routine }
   | { type: 'routine/delete'; id: string }
   | { type: 'routine/addMany'; routines: Routine[] }
   | { type: 'onboarding/complete'; routines: Routine[]; weeklyGoal: number }
   | { type: 'session/start'; routine: Routine | null; now: number }
-  | { type: 'session/finish'; now: number; updateRoutine: boolean }
+  | { type: 'session/finish'; now: number; apply: ApplyOptions }
   | { type: 'session/discard' }
   | { type: 'exercise/add'; exercise: NewExercise }
-  | { type: 'exercise/replace'; exIdx: number; exercise: Omit<NewExercise, 'sets' | 'restSec'> }
+  /** 남은 계획만 다른 종목으로 바꾼다. 완료한 세트는 원래 종목에 남는다. plan은 새 종목 기준 세트 값 */
+  | { type: 'exercise/replace'; exIdx: number; exercise: ExerciseRef; plan: SetPlan[] }
+  /** 종목을 잘못 골랐을 때: 완료한 세트까지 통째로 다른 종목으로 정정 */
+  | { type: 'exercise/relabel'; exIdx: number; exercise: ExerciseRef }
+  /** 오늘은 여기까지: 완료한 세트는 남기고 남은 계획만 뺀다 */
+  | { type: 'exercise/skipRemaining'; exIdx: number }
   | { type: 'exercise/remove'; exIdx: number }
   | { type: 'exercise/move'; exIdx: number; dir: -1 | 1 }
   | { type: 'exercise/update'; exIdx: number; patch: Partial<Pick<ExerciseLog, 'restSec' | 'note'>> }
@@ -49,6 +68,8 @@ export type Action =
   | { type: 'work/start'; exIdx: number; setIdx: number; now: number }
   | { type: 'work/cancel' }
   | { type: 'history/delete'; id: string }
+  /** 끝난 운동 기록 정정 (세트 값·종목·삭제) */
+  | { type: 'history/replace'; session: Session }
   | { type: 'custom/add'; exercise: CustomExercise }
   | { type: 'settings/update'; patch: Partial<Settings> }
   | { type: 'state/replace'; state: AppState };
@@ -103,40 +124,134 @@ export function nextPendingSet(exercises: ExerciseLog[], exIdx: number, setIdx: 
   return null;
 }
 
-/** 루틴을 이번 세션 내용으로 갱신 (종목 구성·세트 수·무게·횟수). 완료 안 한 종목은 루틴 계획 유지 */
-export function applySessionToRoutine(routine: Routine, session: Session, now: number): Routine {
-  const exercises: RoutineExercise[] = [];
+export function sameExercise(a: { exerciseId?: string; name: string }, b: { exerciseId?: string; name: string }): boolean {
+  if (a.exerciseId && b.exerciseId) return a.exerciseId === b.exerciseId;
+  return a.name.trim() === b.name.trim();
+}
+
+function toPlan(s: SetPlan): SetPlan {
+  return { type: s.type, reps: s.reps, weightKg: s.weightKg, durationSec: s.durationSec };
+}
+
+/** 루틴 자리(slot)를 같은 종목으로 수행한 기록 */
+function sameExerciseLog(t: RoutineExercise, session: Session): ExerciseLog | undefined {
+  return session.exercises.find((e) => e.templateId === t.id && sameExercise(e, t) && e.sets.some((s) => s.done));
+}
+
+/** 한 세트의 다음 목표: 더 무겁게 했으면 그 세트로, 같은 무게면 횟수(시간)가 늘었을 때만. 가볍게 한 날은 낮추지 않는다 */
+function nextTarget(p: SetPlan, d: SetPlan): SetPlan {
+  if (d.weightKg > p.weightKg) return toPlan(d);
+  if (d.weightKg < p.weightKg) return p;
+  return { ...p, reps: Math.max(p.reps, d.reps), durationSec: Math.max(p.durationSec, d.durationSec) };
+}
+
+/** 목표 반영: 세트 수·종류는 계획 그대로, 완료한 세트로 다음 목표만 올린다. 하지 않은 세트는 계획값 유지 */
+function withUpdatedTargets(t: RoutineExercise, log: ExerciseLog | undefined): RoutineExercise {
+  const done = log?.sets.filter((s) => s.done) ?? [];
+  if (done.length === 0) return t;
+  const sets = t.sets.map((p, i) => {
+    const order = t.sets.slice(0, i).filter((x) => x.type === p.type).length;
+    const d = done.filter((x) => x.type === p.type)[order];
+    return d ? nextTarget(p, d) : p;
+  });
+  return { ...t, sets };
+}
+
+/** 같은 종목 자리: 오늘 한 세트 + 덜 했으면 남은 계획 본세트 (세트 수는 줄이지 않는다) */
+function setsFromSession(slot: RoutineExercise, done: SetPlan[]): SetPlan[] {
+  const doneNormal = done.filter((s) => s.type === 'normal').length;
+  const rest = slot.sets.filter((s) => s.type === 'normal').slice(doneNormal);
+  return [...done.map(toPlan), ...rest];
+}
+
+interface SlotPlan {
+  slot?: RoutineExercise;
+  log?: ExerciseLog;
+  kind: 'keep' | 'replace' | 'add';
+}
+
+/** 세션을 루틴 자리 기준으로 정리: 같은 종목 유지 / 다른 종목으로 교체 / 새로 추가. 빠진 자리는 목록에 없다 */
+function mapSlots(routine: Routine, session: Session): SlotPlan[] {
+  const replaced = new Set<string>();
   for (const log of session.exercises) {
-    const prev = routine.exercises.find((t) => t.id === log.templateId);
-    const done = log.sets.filter((s) => s.done);
-    if (done.length === 0) {
-      if (prev) exercises.push(prev);
-      continue;
+    const slot = routine.exercises.find((t) => t.id === log.templateId);
+    if (slot && !sameExercise(log, slot)) replaced.add(slot.id);
+  }
+  const used = new Set<string>();
+  const out: SlotPlan[] = [];
+  for (const log of session.exercises) {
+    const slot = routine.exercises.find((t) => t.id === log.templateId);
+    const hasDone = log.sets.some((s) => s.done);
+    if (slot) {
+      const same = sameExercise(log, slot);
+      if (used.has(slot.id) || (same && replaced.has(slot.id))) continue;
+      used.add(slot.id);
+      out.push({ slot, log, kind: same ? 'keep' : 'replace' });
+    } else if (hasDone) {
+      out.push({ log, kind: 'add' });
     }
-    // 오늘 한 세트 + (계획보다 덜 했으면) 남은 계획 세트를 오늘 본세트 무게로
-    const lastNormal = done.filter((s) => s.type === 'normal').at(-1);
-    const rest = (prev?.sets ?? []).slice(done.length).map((p) =>
-      p.type === 'normal' && lastNormal ? { ...p, weightKg: lastNormal.weightKg } : { ...p },
-    );
-    exercises.push({
-      id: prev?.id ?? uid(),
-      exerciseId: log.exerciseId,
-      name: log.name,
-      kind: log.kind,
-      restSec: log.restSec,
-      note: prev?.note,
-      sets: [...done.map(({ type, reps, weightKg, durationSec }) => ({ type, reps, weightKg, durationSec })), ...rest],
+  }
+  return out;
+}
+
+export function applySessionToRoutine(routine: Routine, session: Session, now: number, apply: ApplyOptions): Routine {
+  if (!apply.targets && !apply.structure) return routine;
+  let exercises = apply.targets ? routine.exercises.map((t) => withUpdatedTargets(t, sameExerciseLog(t, session))) : routine.exercises;
+  if (apply.structure) {
+    const byId = new Map(exercises.map((t) => [t.id, t]));
+    exercises = mapSlots(routine, session).map(({ slot, log, kind }) => {
+      const done = log?.sets.filter((s) => s.done) ?? [];
+      if (kind === 'keep') return { ...byId.get(slot!.id)!, sets: setsFromSession(byId.get(slot!.id)!, done) };
+      const sets = (done.length > 0 ? done : log!.sets).map(toPlan);
+      return {
+        id: slot?.id ?? uid(),
+        exerciseId: log!.exerciseId,
+        name: log!.name,
+        kind: log!.kind,
+        restSec: log!.restSec,
+        sets,
+      };
     });
   }
   return { ...routine, exercises, updatedAt: now };
 }
 
-/** 루틴과 비교해 이번 세션에서 계획이 달라졌는지 (무게·횟수·세트 수·종목) */
-export function sessionDiffersFromRoutine(routine: Routine, session: Session): boolean {
-  const updated = applySessionToRoutine(routine, session, routine.updatedAt);
-  const strip = (r: Routine) =>
-    JSON.stringify(r.exercises.map((e) => [e.name, e.restSec, e.sets.map((s) => [s.type, s.reps, s.weightKg, s.durationSec])]));
-  return strip(updated) !== strip(routine);
+function trim(n: number): string {
+  return Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
+}
+
+function describeTarget(before: RoutineExercise, after: RoutineExercise): string | null {
+  const key = (r: RoutineExercise) => JSON.stringify(r.sets.map((x) => [x.type, x.reps, x.weightKg, x.durationSec]));
+  if (key(before) === key(after)) return null;
+  if (before.kind === 'time') {
+    return `${before.name} ${before.sets.map((x) => x.durationSec).join('/')}초 → ${after.sets.map((x) => x.durationSec).join('/')}초`;
+  }
+  const maxB = Math.max(...before.sets.map((x) => x.weightKg));
+  const maxA = Math.max(...after.sets.map((x) => x.weightKg));
+  if (maxB !== maxA) return `${before.name} ${trim(maxB)} → ${trim(maxA)}kg`;
+  return `${before.name} ${before.sets.map((x) => x.reps).join('/')}회 → ${after.sets.map((x) => x.reps).join('/')}회`;
+}
+
+/** 마치기 전에 보여줄 변경 내역: 목표(무게·횟수)와 구성(종목·세트 수)을 따로 */
+export function routineChanges(routine: Routine, session: Session): { targets: string[]; structure: string[] } {
+  const targets = routine.exercises
+    .map((t) => describeTarget(t, withUpdatedTargets(t, sameExerciseLog(t, session))))
+    .filter((x): x is string => x !== null);
+
+  const structure: string[] = [];
+  const slots = mapSlots(routine, session);
+  for (const { slot, log, kind } of slots) {
+    if (kind === 'replace') structure.push(`${slot!.name} → ${log!.name}`);
+    else if (kind === 'add') structure.push(`+ ${log!.name}`);
+    else {
+      const before = slot!.sets.length;
+      const after = setsFromSession(slot!, log!.sets.filter((s) => s.done)).length;
+      if (after !== before) structure.push(`${slot!.name} ${before}세트 → ${after}세트`);
+    }
+  }
+  const kept = new Set(slots.filter((x) => x.slot).map((x) => x.slot!.id));
+  for (const t of routine.exercises) if (!kept.has(t.id)) structure.push(`− ${t.name}`);
+  return { targets, structure };
 }
 
 function withActive(state: AppState, fn: (a: ActiveSession) => ActiveSession): AppState {
@@ -195,10 +310,9 @@ export function reducer(state: AppState, action: Action): AppState {
         note: a.note,
         exercises,
       };
-      const routines =
-        action.updateRoutine && a.routineId
-          ? state.routines.map((r) => (r.id === a.routineId ? applySessionToRoutine(r, a, action.now) : r))
-          : state.routines;
+      const routines = a.routineId
+        ? state.routines.map((r) => (r.id === a.routineId ? applySessionToRoutine(r, a, action.now, action.apply) : r))
+        : state.routines;
       return {
         ...state,
         active: null,
@@ -227,15 +341,57 @@ export function reducer(state: AppState, action: Action): AppState {
       }));
 
     case 'exercise/replace':
+      return withActive(state, (a) => {
+        const ex = a.exercises[action.exIdx];
+        if (!ex) return a;
+        const { exerciseId, name, kind } = action.exercise;
+        const done = ex.sets.filter((x) => x.done);
+        const pending = Math.max(1, ex.sets.filter((x) => !x.done && x.type !== 'warmup').length);
+        const base = action.plan.filter((p) => p.type !== 'warmup');
+        const pick = (i: number) => base[i] ?? base.at(-1) ?? FALLBACK_SET;
+        const next: ExerciseLog = {
+          id: uid(),
+          exerciseId,
+          // 같은 루틴 자리를 대신한다는 표시 (종목이 다르므로 목표 반영 대상은 아님)
+          templateId: ex.templateId,
+          name,
+          kind,
+          restSec: ex.restSec,
+          sets: Array.from({ length: pending }, (_, i) => logSet(fitSetToKind({ ...pick(i), type: 'normal' }, kind))),
+        };
+        const exercises =
+          done.length === 0
+            ? a.exercises.map((e, i) => (i === action.exIdx ? next : e))
+            : [...a.exercises.slice(0, action.exIdx), { ...ex, sets: done }, next, ...a.exercises.slice(action.exIdx + 1)];
+        // 진행 중이던 휴식은 그대로 두고, 위치만 맞춘다
+        let rest = a.rest;
+        if (rest && rest.exIdx === action.exIdx) rest = done.length > 0 ? { ...rest, setIdx: done.length - 1 } : null;
+        else if (rest && rest.exIdx > action.exIdx && done.length > 0) rest = { ...rest, exIdx: rest.exIdx + 1 };
+        const work = a.work && a.work.exIdx === action.exIdx ? null : a.work && done.length > 0 && a.work.exIdx > action.exIdx ? { ...a.work, exIdx: a.work.exIdx + 1 } : a.work;
+        return { ...a, exercises, rest, work };
+      });
+
+    case 'exercise/relabel':
       return withActive(state, (a) =>
         mapExercise(a, action.exIdx, (e) => ({
           ...e,
           exerciseId: action.exercise.exerciseId,
           name: action.exercise.name,
           kind: action.exercise.kind,
-          sets: e.sets.map((s) => fitSetToKind(s, action.exercise.kind)),
+          sets: e.sets.map((x) => fitSetToKind(x, action.exercise.kind)),
         })),
       );
+
+    case 'exercise/skipRemaining':
+      return withActive(state, (a) => {
+        const ex = a.exercises[action.exIdx];
+        if (!ex) return a;
+        const done = ex.sets.filter((x) => x.done);
+        if (done.length === 0) return clearTimers({ ...a, exercises: a.exercises.filter((_, i) => i !== action.exIdx) });
+        const work = a.work?.exIdx === action.exIdx ? null : a.work;
+        const rest = a.rest?.exIdx === action.exIdx ? { ...a.rest, setIdx: done.length - 1 } : a.rest;
+        return { ...mapExercise(a, action.exIdx, (e) => ({ ...e, sets: done })), work, rest };
+      });
 
     case 'exercise/remove':
       return withActive(state, (a) => clearTimers({ ...a, exercises: a.exercises.filter((_, i) => i !== action.exIdx) }));
@@ -365,6 +521,15 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case 'history/delete':
       return { ...state, history: state.history.filter((s) => s.id !== action.id) };
+
+    case 'history/replace': {
+      const exercises = action.session.exercises
+        .map((e) => ({ ...e, sets: e.sets.filter((x) => x.done) }))
+        .filter((e) => e.sets.length > 0);
+      if (exercises.length === 0) return { ...state, history: state.history.filter((h) => h.id !== action.session.id) };
+      const fixed = { ...action.session, exercises };
+      return { ...state, history: state.history.map((h) => (h.id === fixed.id ? fixed : h)) };
+    }
 
     case 'custom/add':
       return { ...state, customExercises: [...state.customExercises, action.exercise] };

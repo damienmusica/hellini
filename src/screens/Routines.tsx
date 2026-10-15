@@ -382,7 +382,12 @@ function RoutineEditor({ initial, isNew, onClose }: { initial: Routine; isNew: b
           mode="replace"
           current={draft.exercises[sheet.exIdx]}
           onPick={([p]) => {
-            updateEx(sheet.exIdx, (e) => ({ ...e, exerciseId: p.exerciseId, name: p.name, kind: p.kind, sets: e.sets.map((x) => fitSetToKind(x, p.kind)) }));
+            // 새 종목 무게는 그 종목 기록(없으면 시작값)으로, 세트 수는 그대로
+            updateEx(sheet.exIdx, (e) => {
+              const plan = defaultSetsFor(p.exerciseId, p.kind, lastLogFor(state.history, p));
+              const sets = e.sets.map((_, i) => fitSetToKind({ ...(plan[i] ?? plan.at(-1)!), type: e.sets[i].type === 'warmup' ? 'warmup' : 'normal' }, p.kind));
+              return { ...e, exerciseId: p.exerciseId, name: p.name, kind: p.kind, sets };
+            });
             setSheet(null);
           }}
           onClose={() => setSheet(null)}

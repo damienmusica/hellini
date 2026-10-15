@@ -136,3 +136,68 @@ test('인터벌 타이머가 준비 → 운동 → 휴식으로 넘어간다', a
   await page.getByRole('button', { name: '리셋' }).click();
   await expect(timer).toBeHidden();
 });
+
+// 2026-10-15 리뷰 리포트 재현 시나리오
+test('P0: 스쿼트 1세트 후 레그 프레스로 바꿔도 완료 세트는 스쿼트로 남고, 기본 루틴은 그대로', async ({ page }) => {
+  await onboard(page);
+  await page.getByRole('button', { name: '운동 시작' }).click();
+  const squat = page.getByRole('article', { name: '스쿼트' });
+  await squat.getByRole('button', { name: '스쿼트 1세트 무게 20kg' }).click();
+  await key(page, '25');
+  await page.getByRole('button', { name: '키패드 닫기' }).click();
+  await squat.getByRole('button', { name: '스쿼트 1세트 완료' }).click();
+
+  await squat.getByRole('button', { name: '스쿼트 메뉴' }).click();
+  await page.getByRole('button', { name: '남은 세트만 다른 종목으로' }).click();
+  await expect(page.getByText('완료한 1세트는 스쿼트 기록으로 남고')).toBeVisible();
+  await page.getByRole('region', { name: '추천 대체 운동' }).getByRole('button', { name: /레그 프레스/ }).click();
+
+  await expect(squat.getByRole('button', { name: '스쿼트 1세트 완료 취소' })).toBeVisible();
+  await expect(squat.getByRole('button', { name: /스쿼트 2세트/ })).toHaveCount(0);
+  const press = page.getByRole('article', { name: '레그 프레스' });
+  await expect(press.getByRole('button', { name: /레그 프레스 \d세트 완료$/ })).toHaveCount(2);
+  // 스쿼트 25kg을 옮기지 않는다
+  await expect(press.getByRole('button', { name: '레그 프레스 1세트 무게 10kg' })).toBeVisible();
+
+  await press.getByRole('button', { name: '레그 프레스 1세트 완료' }).click();
+  await page.getByRole('button', { name: '완료', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText('스쿼트 → 레그 프레스')).toBeVisible();
+  await expect(dialog.getByRole('switch', { name: '종목 구성도 바꾸기' })).not.toBeChecked();
+  await page.getByRole('button', { name: '운동 완료' }).click();
+  await page.getByRole('button', { name: '닫기', exact: true }).click();
+
+  // 기본 루틴은 그대로 스쿼트
+  await page.getByRole('button', { name: '루틴', exact: true }).click();
+  await expect(page.getByText('스쿼트 · 벤치프레스 · 랫풀다운 · 덤벨 숄더 프레스 · 플랭크')).toBeVisible();
+
+  // 기록에는 둘이 따로
+  await page.getByRole('button', { name: '기록', exact: true }).click();
+  await page.locator('.session-card').first().click();
+  const detail = page.getByRole('dialog');
+  await expect(detail.getByText('25kg × 10')).toBeVisible();
+  await expect(detail.getByText('레그 프레스')).toBeVisible();
+});
+
+test('P1: 끝난 기록의 무게를 고치면 상세와 통계에 반영된다', async ({ page }) => {
+  await onboard(page);
+  await page.getByRole('button', { name: '운동 시작' }).click();
+  await page.getByRole('button', { name: '스쿼트 1세트 완료' }).click();
+  await page.getByRole('button', { name: '완료', exact: true }).click();
+  await page.getByRole('button', { name: '운동 완료' }).click();
+  await page.getByRole('button', { name: '닫기', exact: true }).click();
+
+  await page.getByRole('button', { name: '기록', exact: true }).click();
+  await page.locator('.session-card').first().click();
+  await page.getByRole('button', { name: '기록 고치기' }).click();
+  await page.getByRole('button', { name: '스쿼트 1세트 무게 20kg' }).click();
+  await key(page, '30');
+  await page.getByRole('button', { name: '완료', exact: true }).click();
+  await page.getByRole('button', { name: '저장' }).click();
+  await expect(page.getByText('기록을 고쳤어요')).toBeVisible();
+  await expect(page.getByRole('dialog').getByText('30kg × 10')).toBeVisible();
+
+  await page.getByRole('button', { name: '닫기', exact: true }).click();
+  await page.getByRole('tab', { name: '종목별' }).click();
+  await expect(page.getByText('최고 30kg')).toBeVisible();
+});

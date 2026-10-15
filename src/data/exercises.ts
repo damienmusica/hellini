@@ -198,3 +198,152 @@ export function findExercise(idOrName: string | undefined): ExerciseInfo | undef
 export function formVideoUrl(name: string): string {
   return `https://www.youtube.com/results?search_query=${encodeURIComponent(`${name} 자세`)}`;
 }
+
+/**
+ * 운동 역할: 대체 운동을 고를 때 "같은 부위"보다 먼저 보는 기준.
+ * 예) 스쿼트 대신 레그 프레스는 같은 역할, 레그 컬은 같은 하체지만 다른 역할.
+ */
+export type Role =
+  | 'horizontal-press'
+  | 'incline-press'
+  | 'chest-fly'
+  | 'dip'
+  | 'vertical-pull'
+  | 'horizontal-pull'
+  | 'hinge'
+  | 'shrug'
+  | 'vertical-press'
+  | 'lateral-raise'
+  | 'front-raise'
+  | 'rear-delt'
+  | 'squat'
+  | 'single-leg'
+  | 'knee-extension'
+  | 'knee-flexion'
+  | 'hip-thrust'
+  | 'hip-abduction'
+  | 'hip-adduction'
+  | 'calf'
+  | 'elbow-flexion'
+  | 'elbow-extension'
+  | 'wrist'
+  | 'core-stability'
+  | 'core-flexion'
+  | 'core-rotation'
+  | 'conditioning'
+  | 'full-body'
+  | 'carry';
+
+export const ROLE_LABEL: Record<Role, string> = {
+  'horizontal-press': '수평 밀기',
+  'incline-press': '경사 밀기',
+  'chest-fly': '가슴 모으기',
+  dip: '딥스',
+  'vertical-pull': '위에서 당기기',
+  'horizontal-pull': '앞에서 당기기',
+  hinge: '힙 힌지',
+  shrug: '어깨 으쓱',
+  'vertical-press': '머리 위로 밀기',
+  'lateral-raise': '옆으로 들기',
+  'front-raise': '앞으로 들기',
+  'rear-delt': '후면 어깨',
+  squat: '스쿼트 패턴',
+  'single-leg': '한 다리 스쿼트',
+  'knee-extension': '무릎 펴기',
+  'knee-flexion': '무릎 굽히기',
+  'hip-thrust': '엉덩이 밀기',
+  'hip-abduction': '다리 벌리기',
+  'hip-adduction': '다리 모으기',
+  calf: '종아리',
+  'elbow-flexion': '팔 굽히기',
+  'elbow-extension': '팔 펴기',
+  wrist: '손목',
+  'core-stability': '코어 버티기',
+  'core-flexion': '복근 말기',
+  'core-rotation': '몸통 회전',
+  conditioning: '유산소·컨디셔닝',
+  'full-body': '전신',
+  carry: '들고 걷기',
+};
+
+const ROLE_MEMBERS: Record<Role, string[]> = {
+  'horizontal-press': ['bench-press', 'dumbbell-bench-press', 'chest-press-machine', 'push-up'],
+  'incline-press': ['incline-bench-press', 'incline-dumbbell-press'],
+  'chest-fly': ['dumbbell-fly', 'pec-deck', 'cable-crossover'],
+  dip: ['dips', 'bench-dips'],
+  'vertical-pull': ['pull-up', 'chin-up', 'assisted-pull-up', 'lat-pulldown'],
+  'horizontal-pull': ['barbell-row', 'dumbbell-row', 'seated-cable-row', 't-bar-row'],
+  hinge: ['deadlift', 'romanian-deadlift', 'back-extension', 'kettlebell-swing'],
+  shrug: ['shrug'],
+  'vertical-press': ['overhead-press', 'dumbbell-shoulder-press', 'shoulder-press-machine', 'arnold-press'],
+  'lateral-raise': ['lateral-raise', 'cable-lateral-raise', 'upright-row'],
+  'front-raise': ['front-raise'],
+  'rear-delt': ['rear-delt-fly', 'face-pull'],
+  squat: ['squat', 'front-squat', 'goblet-squat', 'bodyweight-squat', 'smith-squat', 'leg-press', 'hack-squat'],
+  'single-leg': ['lunge', 'bulgarian-split-squat'],
+  'knee-extension': ['leg-extension'],
+  'knee-flexion': ['leg-curl'],
+  'hip-thrust': ['hip-thrust', 'glute-bridge'],
+  'hip-abduction': ['hip-abduction'],
+  'hip-adduction': ['hip-adduction'],
+  calf: ['calf-raise'],
+  'elbow-flexion': ['barbell-curl', 'dumbbell-curl', 'hammer-curl', 'preacher-curl', 'cable-curl'],
+  'elbow-extension': ['triceps-pushdown', 'overhead-triceps-extension', 'skull-crusher', 'close-grip-bench-press'],
+  wrist: ['wrist-curl'],
+  'core-stability': ['plank', 'side-plank', 'dead-bug', 'ab-wheel'],
+  'core-flexion': ['crunch', 'leg-raise', 'hanging-leg-raise', 'cable-crunch'],
+  'core-rotation': ['russian-twist'],
+  conditioning: ['mountain-climber', 'burpee', 'jumping-jack', 'jump-rope', 'treadmill', 'stationary-bike', 'rowing-machine', 'stair-climber'],
+  'full-body': ['thruster'],
+  carry: ['farmers-carry'],
+};
+
+/** 비슷한 역할: 같은 역할이 없을 때 다음으로 볼 후보 */
+export const NEAR_ROLES: Partial<Record<Role, Role[]>> = {
+  'horizontal-press': ['incline-press', 'dip'],
+  'incline-press': ['horizontal-press', 'vertical-press'],
+  dip: ['horizontal-press', 'elbow-extension'],
+  'chest-fly': ['horizontal-press'],
+  'vertical-pull': ['horizontal-pull'],
+  'horizontal-pull': ['vertical-pull'],
+  squat: ['single-leg'],
+  'single-leg': ['squat'],
+  hinge: ['hip-thrust'],
+  'hip-thrust': ['hinge'],
+  'vertical-press': ['incline-press', 'lateral-raise'],
+  'lateral-raise': ['vertical-press'],
+  'front-raise': ['vertical-press'],
+  'rear-delt': ['horizontal-pull'],
+  'core-flexion': ['core-stability'],
+  'core-stability': ['core-flexion'],
+  'core-rotation': ['core-stability'],
+  'full-body': ['conditioning'],
+};
+
+const ROLE_OF = new Map<string, Role>(
+  (Object.entries(ROLE_MEMBERS) as [Role, string[]][]).flatMap(([role, ids]) => ids.map((id) => [id, role] as [string, Role])),
+);
+
+export function roleOf(exerciseId: string | undefined): Role | undefined {
+  return exerciseId ? ROLE_OF.get(exerciseId) : undefined;
+}
+
+/** 무게를 어떤 기준으로 적는지 (기록끼리 비교하려면 같은 기준이어야 한다) */
+export function weightBasis(equipment: Equipment | undefined): string {
+  switch (equipment) {
+    case '바벨':
+      return '봉 포함 총무게';
+    case '덤벨':
+      return '한 손 덤벨 무게';
+    case '케틀벨':
+      return '케틀벨 1개 무게';
+    case '머신':
+    case '케이블':
+    case '스미스':
+      return '기구 표시 무게';
+    case '맨몸':
+      return '추가 중량 (맨몸이면 0)';
+    default:
+      return '무게';
+  }
+}
