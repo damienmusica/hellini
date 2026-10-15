@@ -16,17 +16,14 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      // 커스텀 서비스 워커(src/sw.ts): 프리캐시 + 폰트 런타임 캐시 + 알림 클릭 시 앱 열기
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
-      workbox: {
-        // 한글 폰트 조각(woff2)은 미리 받지 않고, 쓰는 글자만 받아서 오프라인용으로 보관한다
-        runtimeCaching: [
-          {
-            urlPattern: ({ request }) => request.destination === 'font',
-            handler: 'CacheFirst',
-            options: { cacheName: 'fonts', expiration: { maxEntries: 120, maxAgeSeconds: 60 * 60 * 24 * 365 } },
-          },
-        ],
+      includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'pwa-192.png'],
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,svg,png}'],
       },
       manifest: {
         name: '헬린이',

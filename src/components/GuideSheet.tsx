@@ -1,5 +1,5 @@
 import { findExercise, formVideoUrl, MUSCLE_LABEL, requiresOf, weightBasisOf } from '../data/exercises';
-import { GUIDE_VERSION, guideOf, UNILATERAL } from '../data/guides';
+import { GUIDE_SOURCES, GUIDE_VERSION, guideOf, REVIEW_LABEL, UNILATERAL } from '../data/guides';
 import { formatCountdown } from '../lib/timer';
 import type { RestTimer } from '../lib/types';
 import { Icon } from './Icon';
@@ -110,7 +110,7 @@ export function GuideSheet({ exerciseId, name, rest, now, onPick, from, diff, on
               <Icon name="video" size={20} /> 유튜브에서 자세 영상 검색
             </a>
             <p className="t-caption c-2">
-              헬린이 운동 설명 v{GUIDE_VERSION} · {guide ? (guide.reviewed ? `검토 완료 ${guide.reviewedAt ?? ''}` : '초안 · 검토 전') : '라이브러리 한 줄 팁'}. 교육용 정보예요. 불편하거나 아프면 멈추고 확인해요.
+              헬린이 운동 설명 v{GUIDE_VERSION} · {guide ? `${REVIEW_LABEL[guide.review]}${guide.reviewedAt ? ` (${guide.reviewedAt})` : ''}` : '라이브러리 한 줄 팁'}. {GUIDE_SOURCES}. 교육용 정보예요. 불편하거나 아프면 멈추고 확인해요.
             </p>
             <a className="t-caption guide-report" href={guideIssueUrl(info.id, info.name)} target="_blank" rel="noreferrer">
               설명이 틀렸나요? 알려주기 ({info.id})

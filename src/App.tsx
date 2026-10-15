@@ -1,18 +1,22 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Icon, type IconName } from './components/Icon';
 import { useToast } from './components/Toast';
 import { cue, setHapticsEnabled, unlockAudio } from './lib/cues';
 import { useCountdownTicks, useNow, useWakeLock } from './lib/hooks';
+import { clearRestNotification, showRestEnd } from './lib/notify';
 import { useStore } from './lib/store';
 import { formatCountdown, formatElapsed } from './lib/timer';
-import { History } from './screens/History';
 import { Home } from './screens/Home';
 import { Onboarding } from './screens/Onboarding';
-import { Routines } from './screens/Routines';
-import { SettingsSheet } from './screens/Settings';
 import { Timers } from './screens/Timers';
+import { nextSetText } from './screens/workout/RestBar';
 import { Workout } from './screens/workout/Workout';
-import { WorkoutComplete } from './screens/workout/WorkoutComplete';
+
+// 첫 화면에 필요 없는 화면은 나중에 받는다 (홈·운동 화면이 먼저 뜨게)
+const History = lazy(() => import('./screens/History').then((m) => ({ default: m.History })));
+const Routines = lazy(() => import('./screens/Routines').then((m) => ({ default: m.Routines })));
+const SettingsSheet = lazy(() => import('./screens/Settings').then((m) => ({ default: m.SettingsSheet })));
+const WorkoutComplete = lazy(() => import('./screens/workout/WorkoutComplete').then((m) => ({ default: m.WorkoutComplete })));
 
 type Tab = 'home' | 'routines' | 'timers' | 'history';
 
@@ -63,13 +67,15 @@ export default function App() {
   return (
     <div className="app">
       {completedId !== null ? (
-        <WorkoutComplete
-          sessionId={completedId}
-          onClose={() => {
-            setCompletedId(null);
-            setTab('home');
-          }}
-        />
+        <Suspense fallback={null}>
+          <WorkoutComplete
+            sessionId={completedId}
+            onClose={() => {
+              setCompletedId(null);
+              setTab('home');
+            }}
+          />
+        </Suspense>
       ) : (
         showWorkout && (
           <Workout
@@ -94,12 +100,20 @@ export default function App() {
             }}
           />
         )}
-        {tab === 'routines' && <Routines />}
+        {tab === 'routines' && (
+          <Suspense fallback={null}>
+            <Routines />
+          </Suspense>
+        )}
         {/* 탭을 옮겨도 돌던 타이머가 멈추지 않도록 항상 마운트해 둔다 */}
         <div hidden={tab !== 'timers'}>
           <Timers onRunningChange={setTimerRunning} />
         </div>
-        {tab === 'history' && <History onOpenSettings={() => setSettingsOpen(true)} initialView={historyView} />}
+        {tab === 'history' && (
+          <Suspense fallback={null}>
+            <History onOpenSettings={() => setSettingsOpen(true)} initialView={historyView} />
+          </Suspense>
+        )}
       </main>
 
       <ActiveSessionWatcher />
@@ -123,7 +137,11 @@ export default function App() {
         </nav>
       )}
 
-      {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && (
+        <Suspense fallback={null}>
+          <SettingsSheet onClose={() => setSettingsOpen(false)} />
+        </Suspense>
+      )}
     </div>
   );
 }
@@ -155,10 +173,21 @@ function ActiveSessionWatcher() {
       dispatch({ type: 'set/complete', exIdx: work.exIdx, setIdx: work.setIdx, now: work.endsAt });
     } else {
       cue('go', state.settings);
+      // 화면이 꺼졌거나 다른 앱을 보는 중이면 시스템 알림으로 (켜 둔 경우만)
+      if (state.settings.restNotify && document.visibilityState === 'hidden') void showRestEnd(a ? (nextSetText(a) ?? '다음 세트 가볼까요?') : '다음 세트 가볼까요?');
       dispatch({ type: 'rest/clear' });
       toast({ tone: 'success', icon: 'dumbbell', title: '휴식 끝! 다음 세트 가볼까요?' });
     }
-  }, [key, remaining, work, state.settings, dispatch, toast]);
+  }, [key, remaining, work, a, state.settings, dispatch, toast]);
+
+  // 앱으로 돌아오면 남은 알림을 치운다
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void clearRestNotification();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
 
   return null;
 }

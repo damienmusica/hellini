@@ -171,6 +171,10 @@ export interface Settings {
   lastBackupAt?: number;
   /** 지금 고른 장소 id (places 중 하나) */
   placeId: string;
+  /** 홈의 지난 주 리뷰를 닫은 주(월요일 0시). 같은 주엔 다시 띄우지 않는다 */
+  reviewSeenWeek?: number;
+  /** 휴식 끝 시스템 알림 (화면 꺼짐·다른 앱). 켤 때 권한을 요청한다 */
+  restNotify?: boolean;
 }
 
 export interface AppState {

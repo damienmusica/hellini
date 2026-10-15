@@ -1,7 +1,7 @@
 {
   "name": "hellini",
   "private": true,
-  "version": "0.3.2",
+  "version": "0.4.0",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -10,7 +10,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc",
+    "typecheck": "tsc && tsc -p tsconfig.sw.json",
     "test": "vitest run",
     "e2e": "playwright test"
   },

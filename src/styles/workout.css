@@ -1357,3 +1357,10 @@
 .picker-note {
   margin: 0 0 8px;
 }
+
+@media (max-width: 359px) {
+  .set-prev {
+    padding: 0 2px;
+    font-size: 13px;
+  }
+}

@@ -4,6 +4,7 @@ import { Icon } from '../components/Icon';
 import { Sheet } from '../components/Sheet';
 import { useToast } from '../components/Toast';
 import { canVibrate, cue } from '../lib/cues';
+import { notifyPermission, notifySupport, requestNotify } from '../lib/notify';
 import { MAIN_PLACE_ID, markAvailable } from '../lib/places';
 import { GOAL_LABEL } from '../lib/body';
 import { ProfileSheet } from './Body';
@@ -33,6 +34,25 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
   const [placeId, setPlaceId] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const openPlace = placeId ? state.places.find((p) => p.id === placeId) : undefined;
+  const support = notifySupport();
+  const notifyOn = !!s.restNotify && support === 'ok' && notifyPermission() === 'granted';
+  const notifyCaption =
+    support === 'ios-install'
+      ? '아이폰은 공유 → 홈 화면에 추가한 앱에서 켤 수 있어요'
+      : support === 'unsupported'
+        ? '이 브라우저는 알림을 지원하지 않아요'
+        : notifyPermission() === 'denied'
+          ? '브라우저 설정에서 알림이 꺼져 있어요'
+          : '화면을 끄거나 다른 앱을 보는 중에 휴식이 끝나면 알려요. 앱을 완전히 닫으면 안 와요';
+  const toggleNotify = async (on: boolean) => {
+    if (!on) {
+      set({ restNotify: false });
+      return;
+    }
+    const ok = await requestNotify();
+    set({ restNotify: ok });
+    if (!ok) toast({ icon: 'info', title: '알림 권한이 없어 켜지 못했어요' });
+  };
 
   const exportData = () => {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
@@ -81,6 +101,13 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
             <span className="t-caption c-3">{canVibrate ? '버튼·타이머 진동' : '이 브라우저는 진동을 지원하지 않아요'}</span>
           </span>
           <Switch label="진동" checked={s.vibrate && canVibrate} disabled={!canVibrate} onChange={(vibrate) => set({ vibrate })} />
+        </label>
+        <label className="group-row">
+          <span className="group-row-main">
+            <span>휴식 끝 알림</span>
+            <span className="t-caption c-3">{notifyCaption}</span>
+          </span>
+          <Switch label="휴식 끝 알림" checked={notifyOn} disabled={support !== 'ok' || notifyPermission() === 'denied'} onChange={(v) => void toggleNotify(v)} />
         </label>
         <button type="button" className="group-row" onClick={() => cue('end', s)}>
           <span className="group-row-main">신호 테스트</span>

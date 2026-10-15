@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { BODY_PARTS, EXERCISES, findExercise, type BodyPart } from '../data/exercises';
+import { aliasesOf, BODY_PARTS, EXERCISES, findExercise, type BodyPart } from '../data/exercises';
 import { uid } from '../lib/id';
 import { isAvailable } from '../lib/places';
 import { useStore } from '../lib/store';
@@ -20,6 +20,7 @@ interface Item extends PickedExercise {
   part: string;
   equipment: string;
   en: string;
+  aliases?: string[];
 }
 
 const CHO = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
@@ -39,7 +40,8 @@ function matches(item: Item, q: string): boolean {
   if (!query) return true;
   const name = item.name.replace(/\s+/g, '').toLowerCase();
   if (name.includes(query) || item.en.toLowerCase().replace(/\s+/g, '').includes(query)) return true;
-  return /^[ㄱ-ㅎ]+$/.test(query) && chosung(name).includes(query);
+  if (item.aliases?.some((a) => a.replace(/\s+/g, '').toLowerCase().includes(query))) return true;
+  return /^[ㄱ-ㅎ]+$/.test(query) && (chosung(name).includes(query) || (item.aliases ?? []).some((a) => chosung(a.replace(/\s+/g, '')).includes(query)));
 }
 
 export interface PickMeta {
@@ -90,7 +92,7 @@ export function ExercisePicker({ mode, current, note, place, rememberPlaceName, 
 
   const all: Item[] = useMemo(
     () => [
-      ...EXERCISES.map((e) => ({ exerciseId: e.id, name: e.name, kind: e.kind, part: e.part, equipment: e.equipment, en: e.en })),
+      ...EXERCISES.map((e) => ({ exerciseId: e.id, name: e.name, kind: e.kind, part: e.part, equipment: e.equipment, en: e.en, aliases: aliasesOf(e.id) })),
       ...state.customExercises.map((c) => ({ exerciseId: c.id, name: c.name, kind: c.kind, part: c.part, equipment: '직접 추가', en: '' })),
     ],
     [state.customExercises],

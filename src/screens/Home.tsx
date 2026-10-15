@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Icon } from '../components/Icon';
 import { PlaceSheet } from '../components/PlaceSheet';
 import { WeekStrip } from '../components/WeekStrip';
+import { WeeklyReviewCard } from '../components/WeeklyReviewCard';
 import { needsBodyCheck } from '../lib/body';
 import { MAIN_PLACE_ID, unavailableIn } from '../lib/places';
 import {
@@ -16,6 +17,7 @@ import {
   sessionVolume,
   weekStreak,
 } from '../lib/stats';
+import { shouldShowReview, weeklyReview } from '../lib/review';
 import { useStore } from '../lib/store';
 import type { Routine } from '../lib/types';
 
@@ -71,6 +73,12 @@ export function Home({ onOpenWorkout, onOpenSettings, onGoRoutines, onGoBody }: 
   const away = place && place.id !== MAIN_PLACE_ID;
   const missing = next && place ? unavailableIn(place, next.exercises) : [];
   const cycle = next ? cyclePosition(state.routines, next) : null;
+  // 지난 주 리뷰: 새 주에 한 번, 닫으면 그 주엔 다시 안 뜬다
+  const review = useMemo(
+    () => weeklyReview({ history: state.history, routines: state.routines, goal, body: state.body, bodyGoal: state.profile.goal, now }),
+    [state.history, state.routines, goal, state.body, state.profile.goal, now],
+  );
+  const showReview = !state.active && shouldShowReview(review, state.settings.reviewSeenWeek);
 
   const start = (routine: Routine | null) => {
     if (state.active) {
@@ -160,6 +168,10 @@ export function Home({ onOpenWorkout, onOpenSettings, onGoRoutines, onGoBody }: 
         </div>
         <WeekStrip history={state.history} now={now} />
       </div>
+
+      {showReview && review && (
+        <WeeklyReviewCard review={review} onDismiss={() => dispatch({ type: 'settings/update', patch: { reviewSeenWeek: review.weekStart } })} />
+      )}
 
       {needsBodyCheck(state.body, now) && onGoBody && (
         <button type="button" className="banner" onClick={onGoBody}>

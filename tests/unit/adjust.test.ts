@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PROGRAMS, instantiateProgram } from '../../src/data/programs';
-import { findExercise, requiresOf } from '../../src/data/exercises';
+import { EXERCISES, findExercise, requiresOf } from '../../src/data/exercises';
 import { GUIDES, guideOf } from '../../src/data/guides';
 import { proposeSwaps } from '../../src/lib/adjust';
 import { reducer, type ExerciseRef } from '../../src/lib/reducer';
@@ -94,8 +94,8 @@ describe('시작 전 조정 (세션 전체 검토)', () => {
 });
 
 describe('운동 설명 콘텐츠', () => {
-  it('기본 프로그램의 모든 종목에 설명(목적·3단계·기록 기준)이 있다', () => {
-    const ids = new Set(PROGRAMS.flatMap((p) => p.routines.flatMap((r) => r.rows.map(([id]) => id))));
+  it('라이브러리의 모든 종목에 설명(목적·3단계·기록 기준)이 있다', () => {
+    const ids = new Set([...PROGRAMS.flatMap((p) => p.routines.flatMap((r) => r.rows.map(([id]) => id))), ...EXERCISES.map((e) => e.id)]);
     for (const id of ids) {
       const g = guideOf(id);
       expect(g, id).toBeDefined();
@@ -108,7 +108,8 @@ describe('운동 설명 콘텐츠', () => {
     for (const [id, g] of Object.entries(GUIDES)) {
       expect(findExercise(id), id).toBeDefined();
       if (requiresOf(id).includes('벤치') || requiresOf(id).includes('인클라인 벤치')) expect(g.setup ?? '', id).toMatch(/벤치/);
-      expect(g.reviewed).toBe(false); // 검토 전 상태를 분명히 둔다
+      expect(['draft', 'edited', 'expert']).toContain(g.review); // 검토 상태를 분명히 둔다
+      if (g.review !== 'draft') expect(g.reviewedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     }
   });
 });

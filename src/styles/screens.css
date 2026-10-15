@@ -1393,3 +1393,86 @@
 .week-summary-cal {
   margin-left: auto;
 }
+
+/* v0.4: 주간 리뷰 카드 */
+.review-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.review-kpis {
+  display: flex;
+  gap: 20px;
+  padding: 10px 0;
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.review-kpis > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.review-kpis strong {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.review-kpis strong small {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.review-kpis > span > small {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.review-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.review-lines li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.review-dot {
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+
+.review-lines li.is-ok .review-dot {
+  background: var(--success);
+}
+
+.review-lines li.is-warn .review-dot {
+  background: var(--warn, #b4541b);
+}
+
+/* 프로그램 태그는 한 단어가 줄 중간에서 끊기지 않게 */
+.program-tags {
+  flex-wrap: wrap;
+}
+
+.program-tags .tag {
+  white-space: nowrap;
+}

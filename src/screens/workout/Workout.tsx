@@ -179,7 +179,7 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
     const info = findExercise(ex.exerciseId ?? ex.name);
     const workSet = ex.sets.find((s) => s.type === 'normal');
     const items: ActionItem[] = [
-      { label: '자세 팁 · 영상', icon: 'info', onSelect: () => setSheet({ kind: 'tip', exIdx }) },
+      { label: '운동 설명', icon: 'info', onSelect: () => setSheet({ kind: 'tip', exIdx }) },
       { label: '휴식 시간 바꾸기', icon: 'timer', onSelect: () => setSheet({ kind: 'rest', exIdx }) },
     ];
     if (ex.kind === 'reps' && workSet && workSet.weightKg > 0) {

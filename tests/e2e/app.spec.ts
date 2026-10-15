@@ -330,3 +330,44 @@ test('운동 설명을 열고 닫아도 입력값·현재 세트·휴식 타이�
   await expect(page.getByRole('timer', { name: '휴식 타이머' })).toContainText('1:5');
   await expect(page.locator('.set-row.is-current').getByRole('button', { name: '스쿼트 2세트 완료' })).toBeVisible();
 });
+
+test('v0.4: 새 주 월요일 홈에 지난 주 리뷰가 뜨고 닫으면 그 주엔 다시 안 뜬다. 완료 화면에 다음 차례, 검색 별칭', async ({ page }) => {
+  await onboard(page);
+  for (const day of ['2026-10-13T19:00:00+09:00', '2026-10-15T19:00:00+09:00']) {
+    await page.clock.setSystemTime(new Date(day));
+    await page.getByRole('button', { name: '운동 시작' }).click();
+    const first = page.getByRole('article').first();
+    const name = (await first.getAttribute('aria-label'))!;
+    for (let i = 1; i <= 3; i++) await first.getByRole('button', { name: `${name} ${i}세트 완료`, exact: true }).click();
+    await page.getByRole('button', { name: '완료', exact: true }).click();
+    await page.getByRole('button', { name: '운동 저장' }).click();
+    await expect(page.getByText(/번째 운동 저장됨/)).toBeVisible();
+    await page.getByRole('button', { name: '닫기', exact: true }).click();
+  }
+  // 두 번째 운동(무분할 B) 완료 화면엔 다음 차례가 적혀 있었다 → 홈의 다음 루틴도 A
+  await expect(page.getByRole('heading', { name: '무분할 A' })).toBeVisible();
+
+  await page.clock.setSystemTime(new Date('2026-10-19T09:00:00+09:00'));
+  await page.reload();
+  const review = page.getByRole('region', { name: '지난 주 리뷰' });
+  await expect(review).toBeVisible();
+  await expect(review).toContainText('목표 3회 중 2회 했어요');
+  await expect(review).toContainText('다음 차례 · 무분할 A');
+  await review.getByRole('button', { name: '리뷰 닫기' }).click();
+  await expect(review).toBeHidden();
+  await page.reload();
+  await expect(page.getByRole('region', { name: '지난 주 리뷰' })).toBeHidden();
+  // 통계 탭에는 항상 있다
+  await page.locator('.tab').filter({ hasText: '기록' }).click();
+  await page.getByRole('tab', { name: '통계' }).click();
+  await expect(page.getByRole('region', { name: '지난 주 리뷰' })).toBeVisible();
+
+  // 검색 별칭: "사레레" → 사이드 레터럴 레이즈
+  await page.locator('.tab').filter({ hasText: '루틴' }).click();
+  await page.locator('.routine-card-main').first().click();
+  await page.locator('.editor-add').click();
+  await page.getByRole('searchbox', { name: '종목 검색' }).fill('사레레');
+  await expect(page.getByRole('button', { name: /사이드 레터럴 레이즈/ })).toBeVisible();
+  await page.getByRole('searchbox', { name: '종목 검색' }).fill('ㅅㄹㄹ');
+  await expect(page.getByRole('button', { name: /사이드 레터럴 레이즈/ })).toBeVisible();
+});

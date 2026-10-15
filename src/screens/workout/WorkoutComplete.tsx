@@ -11,6 +11,7 @@ import {
   formatDuration,
   formatSet,
   formatVolume,
+  nextRoutine,
   sessionDuration,
   sessionsThisWeek,
   sessionVolume,
@@ -77,6 +78,9 @@ export function WorkoutComplete({ sessionId, onClose }: { sessionId: string; onC
   const goal = state.settings.weeklyGoal;
   const prExercises = new Set(prs.map((p) => p.exercise));
   const sets = doneSets(session);
+  // 다음 차례: 프로그램 순환에서 이어질 루틴 (방금 한 것과 다를 때만)
+  const upcoming = nextRoutine(state.routines, state.history);
+  const nextName = upcoming && upcoming.id !== session.routineId ? upcoming.name : null;
 
   const share = async () => {
     setSharing(true);
@@ -100,9 +104,11 @@ export function WorkoutComplete({ sessionId, onClose }: { sessionId: string; onC
         <p className="t-overline hero-kicker">{ordinal}번째 운동 저장됨</p>
         <h1 className="complete-title">{session.routineName}</h1>
         {/* 세트·시간은 아래 숫자 행에 있으므로 여기서 반복하지 않는다 */}
-        {(session.place || prs.length > 0 || thisWeek >= goal) && (
+        {(session.place || prs.length > 0 || thisWeek >= goal || nextName) && (
           <p className="complete-sub">
-            {[session.place?.name, prs.length > 0 ? `새 기록 ${prs.length}개` : thisWeek >= goal ? '이번 주 목표 달성' : null].filter(Boolean).join(' · ')}
+            {[session.place?.name, prs.length > 0 ? `새 기록 ${prs.length}개` : thisWeek >= goal ? '이번 주 목표 달성' : null, nextName ? `다음 차례 · ${nextName}` : null]
+              .filter(Boolean)
+              .join(' · ')}
           </p>
         )}
       </div>

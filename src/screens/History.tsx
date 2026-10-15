@@ -8,7 +8,9 @@ import { MuscleMap } from '../components/MuscleMap';
 import { PartBadge } from '../components/PartBadge';
 import { Sheet } from '../components/Sheet';
 import { useToast } from '../components/Toast';
+import { WeeklyReviewCard } from '../components/WeeklyReviewCard';
 import { MAIN_PLACE_ID } from '../lib/places';
+import { weeklyReview } from '../lib/review';
 import { plateauSessions } from '../lib/progression';
 import { bestsByExercise, estimate1RM, muscleSets, sessionPRs } from '../lib/records';
 import {
@@ -480,9 +482,14 @@ function StatsView() {
   }, [recent]);
   const monthStart = new Date(new Date(now).getFullYear(), new Date(now).getMonth(), 1).getTime();
   const month = state.history.filter((s) => s.startedAt >= monthStart);
+  const review = useMemo(
+    () => weeklyReview({ history: state.history, routines: state.routines, goal: state.settings.weeklyGoal, body: state.body, bodyGoal: state.profile.goal, now }),
+    [state.history, state.routines, state.settings.weeklyGoal, state.body, state.profile.goal, now],
+  );
 
   return (
     <>
+      {review && <WeeklyReviewCard review={review} />}
       <div className="stat-tiles">
         <div className="card">
           <span className="t-overline c-3">총 운동</span>
