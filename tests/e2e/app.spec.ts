@@ -153,7 +153,7 @@ test('P0: 스쿼트 1세트 후 레그 프레스로 바꿔도 완료 세트는 �
   await squat.getByRole('button', { name: '스쿼트 메뉴' }).click();
   await page.getByRole('button', { name: '남은 세트만 다른 종목으로' }).click();
   await expect(page.getByText('완료한 1세트는 유지 · 오늘만')).toBeVisible();
-  await page.getByRole('region', { name: '추천 대체 운동' }).getByRole('button', { name: /레그 프레스/ }).click();
+  await page.getByRole('region', { name: '추천 대체 운동' }).getByRole('button', { name: /레그 프레스/ }).first().click();
 
   // 완료한 스쿼트는 요약으로 접힌다. 펼쳐서 확인
   await squat.getByRole('button', { expanded: false }).click();
@@ -226,7 +226,7 @@ test('호텔 짐: 장비 프리셋 → 시작 전 조정 검토 → 끝나면 �
 
   await expect(page.getByText('무분할 A · 덤벨 + 벤치')).toBeVisible();
   const goblet = page.getByRole('article', { name: '고블릿 스쿼트' });
-  await expect(goblet.getByText('스쿼트 대신 · 기구 없음')).toBeVisible();
+  await expect(goblet.getByText('스쿼트 대신 · 장비 조정')).toBeVisible();
   await goblet.getByRole('button', { name: '고블릿 스쿼트 1세트 완료' }).click();
   await page.getByRole('button', { name: '완료', exact: true }).click();
   // 다른 장소 기록은 기본 루틴에 반영하지 않는 게 기본
@@ -272,4 +272,61 @@ test('체성분을 넣으면 단계 추천과 영양 목표가 나온다', async
   await page.getByRole('radio', { name: '리컴프' }).click();
   await page.getByRole('button', { name: '닫기', exact: true }).click();
   await expect(page.getByText('130g')).toBeVisible();
+});
+
+test('P0: PPL Pull A를 덤벨만으로 조정하면 같은 종목 몰림이 없고, 후보 없음은 멈춘다', async ({ page }) => {
+  await page.getByRole('button', { name: '시작하기' }).click();
+  await page.getByRole('radio', { name: /꾸준히/ }).click();
+  await page.getByRole('radio', { name: /거의 매일/ }).click();
+  await page.getByRole('radio', { name: /헬스장/ }).click();
+  await page.getByRole('button', { name: '이 프로그램으로 시작' }).click();
+  // 오늘 차례는 밀기 A. 한 세트만 하고 저장해 차례를 당기기 A로 넘긴다
+  await page.getByRole('button', { name: '운동 시작' }).click();
+  await page.getByRole('button', { name: '벤치프레스 1세트 완료' }).click();
+  await page.getByRole('button', { name: '완료', exact: true }).click();
+  await page.getByRole('button', { name: '운동 저장' }).click();
+  await page.getByRole('button', { name: '닫기', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '당기기 A (등 넓이)' })).toBeVisible();
+
+  await page.getByRole('button', { name: '장소: 평소 헬스장' }).click();
+  await page.getByRole('button', { name: /다른 곳에서/ }).click();
+  await page.getByRole('button', { name: '덤벨', exact: true }).click();
+  await expect(page.getByText(/사용할 수 없는 운동 5개/)).toBeVisible();
+  await page.getByRole('button', { name: /다음 · 조정 5개 검토/ }).click();
+
+  const review = page.getByRole('dialog', { name: '시작 전 조정' });
+  await expect(review.getByText('백 익스텐션')).toHaveCount(0);
+  await expect(review.getByText('덤벨 숄더 프레스')).toHaveCount(0);
+  await expect(review.getByText('벤트오버 리어 델트 레이즈')).toBeVisible();
+  await expect(review.getByText('벤트오버 덤벨 로우')).toHaveCount(1);
+  await expect(review.getByText('현재 장비로 비슷하게 바꾸기 어려워요').first()).toBeVisible();
+  // 해결 안 된 하나를 오늘 제외
+  await review.getByRole('button', { name: '오늘 제외' }).first().click();
+  await review.getByRole('button', { name: /바꾸고 .*빼고 시작|바꾸고 시작/ }).click();
+
+  // 운동 목록: 같은 종목이 둘 이상 없고 백익스텐션이 없다
+  const names = await page.getByRole('article').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')));
+  expect(new Set(names).size).toBe(names.length);
+  expect(names).not.toContain('백 익스텐션');
+});
+
+test('운동 설명을 열고 닫아도 입력값·현재 세트·휴식 타이머가 그대로다', async ({ page }) => {
+  await onboard(page);
+  await page.getByRole('button', { name: '운동 시작' }).click();
+  const squat = page.getByRole('article', { name: '스쿼트', exact: true });
+  await squat.getByRole('button', { name: '스쿼트 1세트 무게 20kg (시작값)' }).click();
+  await key(page, '30');
+  await page.getByRole('button', { name: '키패드 닫기' }).click();
+  await squat.getByRole('button', { name: '스쿼트 1세트 완료' }).click();
+  await expect(page.getByRole('timer', { name: '휴식 타이머' })).toBeVisible();
+  await squat.getByRole('button', { name: '스쿼트 운동 설명' }).click();
+  const guide = page.getByRole('dialog', { name: '스쿼트 · 운동 설명' });
+  await expect(guide.getByText('필요 장비')).toBeVisible();
+  await expect(guide.getByText(/휴식 \d:\d\d/)).toBeVisible();
+  await page.clock.runFor(5000);
+  await guide.getByRole('button', { name: '닫기' }).click();
+  await expect(squat.getByRole('button', { name: '스쿼트 1세트 무게 30kg' })).toBeVisible();
+  await expect(squat.getByRole('button', { name: '스쿼트 1세트 완료 취소' })).toBeVisible();
+  await expect(page.getByRole('timer', { name: '휴식 타이머' })).toContainText('1:5');
+  await expect(page.locator('.set-row.is-current').getByRole('button', { name: '스쿼트 2세트 완료' })).toBeVisible();
 });

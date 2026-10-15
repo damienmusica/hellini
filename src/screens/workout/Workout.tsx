@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { findExercise } from '../../data/exercises';
 import { defaultSetsFor } from '../../data/programs';
 import { ExercisePicker } from '../../components/ExercisePicker';
+import { GuideSheet } from '../../components/GuideSheet';
 import { Icon } from '../../components/Icon';
 import { Keypad } from '../../components/Keypad';
 import { ActionSheet, Sheet, type ActionItem } from '../../components/Sheet';
@@ -15,14 +16,14 @@ import { nextPendingSet, routineChanges, type ApplyOptions } from '../../lib/red
 import { doneSets, formatDuration, formatSet, formatVolume, lastLogAt, logKey, sessionVolume, totalSets } from '../../lib/stats';
 import { useStore } from '../../lib/store';
 import { formatElapsed } from '../../lib/timer';
-import type { ActiveSession, SetType, SwapReason } from '../../lib/types';
+import type { ActiveSession, SetType } from '../../lib/types';
 import { ExerciseCard, isFirstTime, setLabels, SET_TYPE_LABEL, type Editing } from './ExerciseCard';
 import { RestBar, RestSheet } from './RestBar';
-import { NoteSheet, PlateSheet, RestTimeSheet, TipSheet } from './sheets';
+import { NoteSheet, PlateSheet, RestTimeSheet } from './sheets';
 
 type SheetState =
   | { kind: 'add' }
-  | { kind: 'replace'; exIdx: number; reason?: SwapReason }
+  | { kind: 'replace'; exIdx: number }
   | { kind: 'relabel'; exIdx: number }
   | { kind: 'menu'; exIdx: number }
   | { kind: 'setMenu'; exIdx: number; setIdx: number }
@@ -388,7 +389,7 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
               }}
               onDismissSuggestion={() => dispatch({ type: 'exercise/dismissSuggestion', exIdx })}
               onEffort={(effort) => dispatch({ type: 'exercise/update', exIdx, patch: { effort } })}
-              onSwap={() => setSheet({ kind: 'replace', exIdx, reason: 'missing' })}
+              onSwap={() => setSheet({ kind: 'replace', exIdx })}
             />
           );
         })}
@@ -445,13 +446,20 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
           mode="replace"
           current={a.exercises[sheet.exIdx]}
           place={place ?? a.place}
-          initialReason={sheet.reason}
           rememberPlaceName={place && !place.temp && a.exercises[sheet.exIdx].exerciseId ? placeName : undefined}
           note={
             a.exercises[sheet.exIdx].sets.some((s) => s.done)
               ? `완료한 ${a.exercises[sheet.exIdx].sets.filter((s) => s.done).length}세트는 유지 · 오늘만`
               : '오늘만 · 기본 루틴은 마칠 때 따로 골라요'
           }
+          onSkip={() => {
+            const ex = a.exercises[sheet.exIdx];
+            setEditing(null);
+            if (ex.sets.some((s) => s.done)) dispatch({ type: 'exercise/skipRemaining', exIdx: sheet.exIdx });
+            else dispatch({ type: 'exercise/remove', exIdx: sheet.exIdx });
+            setSheet(null);
+            toast({ icon: 'close', title: `${ex.name}은(는) 오늘 빼요` });
+          }}
           onPick={([p], meta) => {
             const ex = a.exercises[sheet.exIdx];
             const before = a.exercises;
@@ -462,7 +470,7 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
               exIdx: sheet.exIdx,
               exercise: p,
               plan: defaultSetsFor(p.exerciseId, p.kind, lastLogAt(state.history, p, here)),
-              reason: meta?.reason ?? 'prefer',
+              reason: meta?.reason,
               now: Date.now(),
             });
             if (meta?.remember && place && !place.temp && ex.exerciseId) {
@@ -512,7 +520,7 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
         />
       )}
       {sheet?.kind === 'tip' && a.exercises[sheet.exIdx] && (
-        <TipSheet exerciseId={a.exercises[sheet.exIdx].exerciseId} name={a.exercises[sheet.exIdx].name} onClose={() => setSheet(null)} />
+        <GuideSheet exerciseId={a.exercises[sheet.exIdx].exerciseId} name={a.exercises[sheet.exIdx].name} rest={a.rest} now={now} onClose={() => setSheet(null)} />
       )}
       {sheet?.kind === 'rest' && a.exercises[sheet.exIdx] && (
         <RestTimeSheet

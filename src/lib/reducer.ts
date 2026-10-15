@@ -52,7 +52,7 @@ export type Action =
   | { type: 'routine/addMany'; routines: Routine[] }
   | { type: 'onboarding/complete'; routines: Routine[]; weeklyGoal: number }
   /** swaps: 시작 전 검토에서 고른 오늘만 교체 (루틴 자리 id → 새 종목) */
-  | { type: 'session/start'; routine: Routine | null; now: number; swaps?: Record<string, ExerciseRef> }
+  | { type: 'session/start'; routine: Routine | null; now: number; swaps?: Record<string, ExerciseRef>; /** 오늘 제외할 루틴 자리 id */ skips?: string[] }
   /** 교체 직후 되돌리기: 종목 목록을 그 전으로 (완료 세트가 바뀌지 않았을 때만 쓴다) */
   | { type: 'session/restoreExercises'; exercises: ExerciseLog[] }
   | { type: 'session/finish'; now: number; apply: ApplyOptions }
@@ -132,6 +132,8 @@ export interface SessionContext {
   now: number;
   /** 시작 전 검토에서 고른 오늘만 교체 */
   swaps?: Record<string, ExerciseRef>;
+  /** 시작 전 검토에서 오늘 제외한 자리 */
+  skips?: string[];
 }
 
 function placeOf(state: AppState): Place {
@@ -166,7 +168,7 @@ function swapForPlace(t: RoutineExercise, ctx: SessionContext | undefined): Exer
     name: ref.name,
     kind: ref.kind,
     sets: Array.from({ length: n }, (_, i) => logSet(fitSetToKind({ ...pick(i), type: 'normal' }, ref.kind))),
-    swap: { from: t.name, reason: chosen ? 'missing' : 'place' },
+    swap: { from: t.name, reason: chosen ? 'adjust' : 'place' },
   };
 }
 
@@ -179,7 +181,7 @@ export function buildSession(routine: Routine | null, now: number, ctx?: Session
     startedAt: now,
     rest: null,
     work: null,
-    exercises: routine ? routine.exercises.map((t) => withSuggestion(swapForPlace(t, ctx), ctx)) : [],
+    exercises: routine ? routine.exercises.filter((t) => !ctx?.skips?.includes(t.id)).map((t) => withSuggestion(swapForPlace(t, ctx), ctx)) : [],
     place: place && place.id !== MAIN_PLACE_ID ? sessionPlace(place) : undefined,
   };
 }
@@ -367,7 +369,7 @@ export function reducer(state: AppState, action: Action): AppState {
       if (state.active) return state;
       return {
         ...state,
-        active: buildSession(action.routine, action.now, { history: state.history, place: placeOf(state), now: action.now, swaps: action.swaps }),
+        active: buildSession(action.routine, action.now, { history: state.history, place: placeOf(state), now: action.now, swaps: action.swaps, skips: action.skips }),
       };
 
     case 'session/restoreExercises':
@@ -445,7 +447,7 @@ export function reducer(state: AppState, action: Action): AppState {
             kind,
             restSec: ex.restSec,
             sets: Array.from({ length: pending }, (_, i) => logSet(fitSetToKind({ ...pick(i), type: 'normal' }, kind))),
-            swap: { from: ex.name, reason: action.reason ?? 'prefer' },
+            swap: action.reason ? { from: ex.name, reason: action.reason } : { from: ex.name },
           },
           { history: state.history, place: placeOf(state), now: action.now ?? Date.now() },
         );

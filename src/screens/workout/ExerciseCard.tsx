@@ -115,10 +115,15 @@ export function ExerciseCard(p: Props) {
           </span>
           <span className={`ex-progress${allDone ? ' is-done' : ''}`}>
             {allDone ? <Icon name="check" size={16} strokeWidth={3} /> : null}
-            {doneCount}/{workSets.length}
+            {allDone ? '완료' : doneCount > 0 ? `${doneCount}/${workSets.length}` : `${workSets.length}세트 남음`}
           </span>
           <Icon name="chevronDown" size={18} className="c-3" />
         </button>
+        {info && (
+          <button type="button" className="icon-btn is-plain ex-summary-info" aria-label={`${ex.name} 운동 설명`} onClick={p.onTip}>
+            <Icon name="info" size={18} />
+          </button>
+        )}
       </article>
     );
   }
@@ -131,10 +136,11 @@ export function ExerciseCard(p: Props) {
           <span className="t-caption c-2">
             {!isTime && firstNormal ? `목표 ${formatRepRange(firstNormal.reps)}` : ''}
             {info && !isTime ? ` · ${weightBasis(info.equipment)}` : info ? info.equipment : '직접 추가한 종목'}
+            {firstTime && <span className="start-tag-inline">시작값</span>}
           </span>
         </button>
         {info && (
-          <button type="button" className="icon-btn is-plain" aria-label={`${ex.name} 자세 도움말`} onClick={p.onTip}>
+          <button type="button" className="icon-btn is-plain" aria-label={`${ex.name} 운동 설명`} onClick={p.onTip}>
             <Icon name="info" size={20} />
           </button>
         )}
@@ -145,8 +151,8 @@ export function ExerciseCard(p: Props) {
 
       {ex.swap && (
         <p className="ex-swap">
-          <Icon name="swap" size={14} /> {ex.swap.from} 대신 ·{' '}
-          {ex.swap.reason === 'place' ? '이 장소 설정' : ex.swap.reason === 'missing' ? '기구 없음' : ex.swap.reason === 'busy' ? '사용 중' : '오늘만'}
+          <Icon name="swap" size={14} /> {ex.swap.from} 대신
+          {ex.swap.reason === 'place' ? ' · 이 장소 설정' : ex.swap.reason === 'adjust' ? ' · 장비 조정' : ex.swap.reason === 'missing' ? ' · 기구 없음' : ex.swap.reason === 'busy' ? ' · 사용 중' : ''}
         </p>
       )}
 
@@ -246,11 +252,6 @@ export function ExerciseCard(p: Props) {
                     >
                       {trimKg(s.weightKg)}
                     </button>
-                    {firstTime && !s.done && (
-                      <span className="start-tag" aria-hidden="true">
-                        시작값
-                      </span>
-                    )}
                   </span>
                   <button
                     type="button"

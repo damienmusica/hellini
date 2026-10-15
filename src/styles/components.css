@@ -908,3 +908,30 @@ button.group-row:active {
   gap: 4px;
   align-items: center;
 }
+
+.sub-item {
+  position: relative;
+}
+
+.sub-info {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+}
+
+.sub-card {
+  padding-right: 44px;
+}
+
+.no-candidate {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-card);
+}
+
+.review-row.is-unresolved {
+  border-style: dashed;
+}

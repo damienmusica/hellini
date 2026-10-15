@@ -18,8 +18,10 @@ export function Sheet({ title, onClose, children, footer, size = 'auto', label }
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
 
-  // 열릴 때 한 번만: Esc로 닫기, 뒤 화면 스크롤 막기, 포커스 이동 (안쪽 입력칸이 autoFocus면 그대로 둔다)
+  // 열릴 때 한 번만: Esc로 닫기, 뒤 화면 스크롤 막기, 포커스 이동 (안쪽 입력칸이 autoFocus면 그대로 둔다).
+  // 닫히면 열었던 버튼으로 초점을 돌려준다
   useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') closeRef.current();
     };
@@ -30,6 +32,7 @@ export function Sheet({ title, onClose, children, footer, size = 'auto', label }
     return () => {
       window.removeEventListener('keydown', onKey);
       document.body.style.overflow = prevOverflow;
+      if (opener && opener.isConnected && typeof opener.focus === 'function') opener.focus({ preventScroll: true });
     };
   }, []);
 

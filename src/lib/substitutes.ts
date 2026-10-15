@@ -5,11 +5,13 @@ import type { Place, Session, SessionPlace } from './types';
 
 export interface Substitute {
   info: ExerciseInfo;
-  /** 3: 같은 역할, 2: 비슷한 역할, 1: 같은 부위 */
+  /** 3: 같은 역할, 2: 비슷한 역할, 1: 같은 부위(역할 다름 — 유사 대체로 치지 않는다) */
   match: 3 | 2 | 1;
   reason: string;
   /** 이 종목의 지난 기록 (없으면 처음) */
   lastText: string | null;
+  /** 필요한 장비 + 보조 장비 */
+  needs: string[];
 }
 
 /**
@@ -20,7 +22,14 @@ export interface Substitute {
 export function rankSubstitutes(
   current: { exerciseId?: string; name: string },
   history: Session[],
-  opts: { place?: Place | SessionPlace; limit?: number; /** 기구 사용 중: 같은 장비·같은 보조 장비를 쓰는 후보는 뒤로 */ avoidSameEquipment?: boolean } = {},
+  opts: {
+    place?: Place | SessionPlace;
+    limit?: number;
+    /** 기구 사용 중: 같은 장비·같은 보조 장비를 쓰는 후보는 뒤로 */
+    avoidSameEquipment?: boolean;
+    /** 같은 역할·비슷한 역할만 (같은 부위라는 이유로는 제안하지 않는다). 자동 제안과 후보 카드의 기본 */
+    strict?: boolean;
+  } = {},
 ): Substitute[] {
   const cur = findExercise(current.exerciseId ?? current.name);
   if (!cur) return [];
@@ -40,7 +49,7 @@ export function rankSubstitutes(
       const sameRig = opts.avoidSameEquipment && (info.equipment === cur.equipment || requiresOf(info.id).some((f) => requiresOf(cur.id).includes(f)));
       return { info, match, order, last, best, sameRig: sameRig ? 1 : 0 };
     })
-    .filter((x) => x.match > 0)
+    .filter((x) => (opts.strict ? x.match >= 2 : x.match > 0))
     .sort((a, b) => a.sameRig - b.sameRig || b.match - a.match || Number(!!b.last) - Number(!!a.last) || a.order - b.order);
 
   return scored.slice(0, limit).map(({ info, match, best }) => {
@@ -52,6 +61,7 @@ export function rankSubstitutes(
       match: match as 3 | 2 | 1,
       reason,
       lastText: best ? formatSet(info.kind, best) : null,
+      needs: [info.equipment, ...requiresOf(info.id)].filter((x) => x !== '맨몸' && x !== '기타'),
     };
   });
 }

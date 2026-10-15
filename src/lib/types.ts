@@ -40,8 +40,8 @@ export interface SetLog extends SetPlan {
 /** 마지막 세트 뒤에 고르는 체감: 여유 있었음 / 적당했음 / 거의 한계였음 */
 export type Effort = 'easy' | 'ok' | 'hard';
 
-/** 종목을 바꾼 이유. place: 장소 프로필에 따라 시작할 때 자동으로 바뀜 */
-export type SwapReason = 'missing' | 'busy' | 'prefer' | 'place';
+/** 종목을 바꾼 이유(선택). place: 장소 프로필에 따라 시작할 때 자동, adjust: 시작 전 조정에서 장비 조건으로 */
+export type SwapReason = 'missing' | 'busy' | 'prefer' | 'place' | 'adjust';
 
 /** 추천 엔진이 남긴 제안 이력 (같은 입력·버전이면 같은 결과) */
 export interface Suggested {
@@ -69,8 +69,8 @@ export interface ExerciseLog {
   sets: SetLog[];
   effort?: Effort;
   suggested?: Suggested;
-  /** 다른 종목 대신 들어왔으면 어디서 왔는지 */
-  swap?: { from: string; reason: SwapReason };
+  /** 다른 종목 대신 들어왔으면 어디서 왔는지. 사유는 사용자가 골랐을 때만 */
+  swap?: { from: string; reason?: SwapReason };
 }
 
 export type Equipment = '바벨' | '덤벨' | '머신' | '케이블' | '맨몸' | '케틀벨' | '스미스' | '기타';

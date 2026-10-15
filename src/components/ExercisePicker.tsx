@@ -5,6 +5,7 @@ import { isAvailable } from '../lib/places';
 import { useStore } from '../lib/store';
 import type { ExerciseKind, Place, SessionPlace, SwapReason } from '../lib/types';
 import { rankSubstitutes } from '../lib/substitutes';
+import { GuideSheet } from './GuideSheet';
 import { Icon } from './Icon';
 import { PartBadge } from './PartBadge';
 import { Sheet } from './Sheet';
@@ -47,7 +48,7 @@ export interface PickMeta {
   remember?: boolean;
 }
 
-const REASON_LABEL: Record<Exclude<SwapReason, 'place'>, string> = { busy: '사용 중', missing: '기구 없음', prefer: '다른 운동' };
+const REASON_LABEL: Record<Exclude<SwapReason, 'place' | 'adjust'>, string> = { busy: '사용 중', missing: '기구 없음', prefer: '다른 운동' };
 
 interface Props {
   /** add: 여러 개 추가, replace: 남은 계획을 바꿀 종목, relabel: 잘못 고른 종목 정정 */
@@ -58,27 +59,29 @@ interface Props {
   note?: string;
   /** 지금 장소. 없는 기구 종목은 추천에서 빼고 목록에 표시한다 */
   place?: Place | SessionPlace;
-  /** replace: 처음 골라 둘 사유 (선택) */
-  initialReason?: SwapReason;
   /** replace: 기구 없음일 때 "이 장소에서는 항상"을 고를 수 있는 장소 이름 */
   rememberPlaceName?: string;
+  /** replace: 적격 후보가 없을 때 "오늘은 이 운동 제외" */
+  onSkip?: () => void;
   onPick: (picked: PickedExercise[], meta?: PickMeta) => void;
   onClose: () => void;
 }
 
 const TITLE = { add: '운동 추가', replace: '운동 변경', relabel: '실제로 한 종목 고르기' } as const;
 
-export function ExercisePicker({ mode, current, note, place, initialReason, rememberPlaceName, onPick, onClose }: Props) {
+export function ExercisePicker({ mode, current, note, place, rememberPlaceName, onSkip, onPick, onClose }: Props) {
   const { state, dispatch } = useStore();
   const currentInfo = findExercise(current?.exerciseId ?? current?.name);
   const [query, setQuery] = useState('');
   const [part, setPart] = useState<BodyPart | '최근' | '전체'>('전체');
-  const [reason, setReason] = useState<SwapReason | undefined>(initialReason);
+  // 사유는 사용자가 골랐을 때만 기록한다. 기본은 없음
+  const [reason, setReason] = useState<SwapReason | undefined>(undefined);
+  const [guide, setGuide] = useState<PickedExercise | null>(null);
   const [remember, setRemember] = useState(false);
   // 교체는 추천 3~5개에 집중하고, 전체 목록은 "다른 운동 찾기"를 눌렀을 때 연다
   const [showAll, setShowAll] = useState(mode !== 'replace');
   const suggestions = useMemo(
-    () => (mode === 'replace' && current ? rankSubstitutes(current, state.history, { place, limit: 5, avoidSameEquipment: reason === 'busy' }) : []),
+    () => (mode === 'replace' && current ? rankSubstitutes(current, state.history, { place, limit: 5, avoidSameEquipment: reason === 'busy', strict: true }) : []),
     [mode, current, state.history, place, reason],
   );
   const [selected, setSelected] = useState<Item[]>([]);
@@ -116,11 +119,16 @@ export function ExercisePicker({ mode, current, note, place, initialReason, reme
 
   const filters: (BodyPart | '최근' | '전체')[] = ['전체', ...(recentIds.length ? (['최근'] as const) : []), ...BODY_PARTS];
 
+  // 후보 카드의 ⓘ: 같은 시트 자리에서 설명을 열고, 닫아도 선택이 확정되지 않는다
+  if (guide) {
+    return <GuideSheet exerciseId={guide.exerciseId} name={guide.name} onPick={() => onPick([guide], meta())} onClose={() => setGuide(null)} />;
+  }
+
   return (
     <Sheet
       title={TITLE[mode]}
       onClose={onClose}
-      size="full"
+      size={showAll ? 'full' : 'auto'}
       footer={
         mode === 'add' ? (
           <button type="button" className="btn btn-primary btn-lg btn-block" disabled={selected.length === 0} onClick={() => onPick(selected)}>
@@ -134,7 +142,7 @@ export function ExercisePicker({ mode, current, note, place, initialReason, reme
       {mode === 'replace' && (
         <div className="reason-row" role="group" aria-label="변경 사유">
           <span className="t-caption c-2">사유 (선택)</span>
-          {(Object.keys(REASON_LABEL) as Exclude<SwapReason, 'place'>[]).map((r) => (
+          {(Object.keys(REASON_LABEL) as Exclude<SwapReason, 'place' | 'adjust'>[]).map((r) => (
             <button key={r} type="button" className={`chip${reason === r ? ' is-on' : ''}`} aria-pressed={reason === r} onClick={() => setReason(reason === r ? undefined : r)}>
               {REASON_LABEL[r]}
             </button>
@@ -159,17 +167,32 @@ export function ExercisePicker({ mode, current, note, place, initialReason, reme
         <section aria-label="추천 대체 운동">
           <h3 className="picker-section">'{currentInfo?.name}' 대신</h3>
           {suggestions.length === 0 ? (
-            <p className="empty-note">여기 있는 장비로 할 수 있는 같은 역할의 운동이 없어요. 맨몸 운동이나 전체 검색에서 골라요.</p>
+            <div className="no-candidate">
+              <p className="t-headline">현재 장비로 비슷하게 바꾸기 어려워요</p>
+              <p className="t-caption c-2">같은 역할(예: 위에서 당기기)을 하는 운동이 지금 장비로는 없어요. 오늘은 빼거나, 다른 역할의 운동을 직접 골라요.</p>
+              {onSkip && (
+                <button type="button" className="btn btn-secondary btn-block" onClick={onSkip}>
+                  오늘은 이 운동 제외
+                </button>
+              )}
+            </div>
           ) : (
             <ul className="sub-cards">
               {suggestions.map((sub) => (
-                <li key={sub.info.id}>
+                <li key={sub.info.id} className="sub-item">
                   <button type="button" className="sub-card" onClick={() => onPick([{ exerciseId: sub.info.id, name: sub.info.name, kind: sub.info.kind }], meta())}>
                     <span className="sub-name">{sub.info.name}</span>
-                    <span className="t-caption c-2">
-                      {sub.info.equipment} · {sub.reason}
-                    </span>
+                    <span className="t-caption c-2">{sub.needs.length ? sub.needs.join(' · ') : '맨몸'}</span>
+                    <span className="t-caption c-2">{sub.reason}</span>
                     <span className="t-caption c-2">{sub.lastText ? `지난번 ${sub.lastText}` : '처음 해요'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-btn is-plain sub-info"
+                    aria-label={`${sub.info.name} 운동 설명`}
+                    onClick={() => setGuide({ exerciseId: sub.info.id, name: sub.info.name, kind: sub.info.kind })}
+                  >
+                    <Icon name="info" size={18} />
                   </button>
                 </li>
               ))}

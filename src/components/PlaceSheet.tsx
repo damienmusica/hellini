@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
 import { findExercise } from '../data/exercises';
 import { uid } from '../lib/id';
-import { CHECKABLE_EQUIPMENT, CHECKABLE_FEATURES, isAvailable, MAIN_PLACE_ID, markUnavailable, missingReason, PLACE_PRESETS } from '../lib/places';
+import { needsOf, proposeSwaps, type Proposal } from '../lib/adjust';
+import { CHECKABLE_EQUIPMENT, CHECKABLE_FEATURES, isAvailable, MAIN_PLACE_ID, markUnavailable, PLACE_PRESETS } from '../lib/places';
 import type { ExerciseRef } from '../lib/reducer';
 import { useStore } from '../lib/store';
-import { rankSubstitutes } from '../lib/substitutes';
-import type { Equipment, Feature, Place, Routine, RoutineExercise } from '../lib/types';
+import type { Equipment, Feature, Place, Routine } from '../lib/types';
 import { ExercisePicker } from './ExercisePicker';
 import { Icon } from './Icon';
 import { Sheet } from './Sheet';
@@ -177,40 +177,37 @@ export function PlaceSheet({ routine, initialMode = 'list', onClose }: Props) {
   );
 }
 
-interface Proposal {
-  slot: RoutineExercise;
-  reason: string | null;
-  /** null이면 그대로 둔다 */
-  to: ExerciseRef | null;
-}
-
-/** 시작 전 조정: 못 하는 종목과 대체안을 한 화면에서 비교하고 한 번에 적용한다 */
+/** 시작 전 조정: 못 하는 종목과 대체안을 한 화면에서 비교하고 한 번에 적용한다. 적격 후보가 없으면 그대로 두거나 오늘 제외 */
 function ReviewStep({ routine, place, onBack, onClose }: { routine: Routine; place: Place | undefined; onBack: () => void; onClose: () => void }) {
   const { state, dispatch } = useStore();
   const [picking, setPicking] = useState<string | null>(null);
   const [remember, setRemember] = useState(false);
-  const initial = useMemo<Proposal[]>(
-    () =>
-      routine.exercises
-        .filter((e) => !isAvailable(place, e))
-        .map((slot) => {
-          const top = rankSubstitutes(slot, state.history, { place, limit: 1 })[0];
-          return { slot, reason: missingReason(place, slot), to: top ? { exerciseId: top.info.id, name: top.info.name, kind: top.info.kind } : null };
-        }),
-    [routine, place, state.history],
-  );
+  const initial = useMemo(() => proposeSwaps(routine, place, state.history), [routine, place, state.history]);
   const [proposals, setProposals] = useState<Proposal[]>(initial);
   const canRemember = !!place && !place.temp && place.id !== MAIN_PLACE_ID;
+  const update = (id: string, fn: (p: Proposal) => Proposal) => setProposals((list) => list.map((x) => (x.slot.id === id ? fn(x) : x)));
 
   const start = (apply: boolean) => {
     const swaps: Record<string, ExerciseRef> = {};
-    if (apply) for (const p of proposals) if (p.to) swaps[p.slot.id] = p.to;
+    const skips: string[] = [];
+    if (apply) {
+      for (const p of proposals) {
+        if (p.to) swaps[p.slot.id] = p.to;
+        else if (p.fallback === 'skip') skips.push(p.slot.id);
+      }
+    }
     if (apply && remember && place) {
       let next = place;
       for (const p of proposals) if (p.to && p.slot.exerciseId) next = markUnavailable(next, p.slot.exerciseId, p.to.exerciseId);
       dispatch({ type: 'place/save', place: next });
     }
-    dispatch({ type: 'session/start', routine, now: Date.now(), swaps: Object.keys(swaps).length ? swaps : undefined });
+    dispatch({
+      type: 'session/start',
+      routine,
+      now: Date.now(),
+      swaps: Object.keys(swaps).length ? swaps : undefined,
+      skips: skips.length ? skips : undefined,
+    });
     onClose();
   };
 
@@ -222,8 +219,12 @@ function ReviewStep({ routine, place, onBack, onClose }: { routine: Routine; pla
         current={slot}
         place={place}
         note="시작 전 조정 · 오늘만"
+        onSkip={() => {
+          update(picking, (x) => ({ ...x, to: null, fallback: 'skip' }));
+          setPicking(null);
+        }}
         onPick={([p]) => {
-          setProposals((list) => list.map((x) => (x.slot.id === picking ? { ...x, to: { exerciseId: p.exerciseId, name: p.name, kind: p.kind } } : x)));
+          update(picking, (x) => ({ ...x, to: { exerciseId: p.exerciseId, name: p.name, kind: p.kind }, fallback: 'keep' }));
           setPicking(null);
         }}
         onClose={() => setPicking(null)}
@@ -231,7 +232,10 @@ function ReviewStep({ routine, place, onBack, onClose }: { routine: Routine; pla
     );
   }
 
-  const applied = proposals.filter((p) => p.to).length;
+  const swapped = proposals.filter((p) => p.to).length;
+  const skipped = proposals.filter((p) => !p.to && p.fallback === 'skip').length;
+  const unresolved = proposals.filter((p) => !p.to && p.fallback === 'keep').length;
+  const label = [swapped ? `${swapped}개 바꾸고` : '', skipped ? `${skipped}개 빼고` : ''].filter(Boolean).join(' ') || '그대로';
   return (
     <Sheet
       title="시작 전 조정"
@@ -241,22 +245,25 @@ function ReviewStep({ routine, place, onBack, onClose }: { routine: Routine; pla
           <button type="button" className="btn btn-secondary btn-lg" onClick={() => start(false)}>
             조정 없이 시작
           </button>
-          <button type="button" className="btn btn-primary btn-lg" onClick={() => start(true)} disabled={applied === 0}>
-            {applied}개 바꾸고 시작
+          <button type="button" className="btn btn-primary btn-lg" onClick={() => start(true)} disabled={swapped + skipped === 0}>
+            {label} 시작
           </button>
         </div>
       }
     >
       <p className="t-caption c-2">
         {place?.name ?? '이 장소'}에서 못 하는 운동 {proposals.length}개. 바꾼 종목은 오늘만 적용되고 기본 루틴은 그대로예요.
+        {unresolved > 0 ? ` 해결 안 된 ${unresolved}개는 그대로 들어가고 운동 중에 정해요.` : ''}
       </p>
       <ul className="review-list">
         {proposals.map((p) => {
           const toInfo = p.to ? findExercise(p.to.exerciseId ?? p.to.name) : undefined;
           return (
-            <li key={p.slot.id} className="review-row">
+            <li key={p.slot.id} className={`review-row${!p.to ? ' is-unresolved' : ''}`}>
               <div className="review-from">
-                <span className="t-headline">{p.slot.name}</span>
+                <span className="t-headline">
+                  {p.slot.name} <span className="t-caption c-2 num">{p.slot.sets.length}세트</span>
+                </span>
                 <span className="t-caption c-warn">{p.reason ?? '사용 불가'}</span>
               </div>
               <Icon name="arrowDown" size={16} className="c-3" />
@@ -264,19 +271,35 @@ function ReviewStep({ routine, place, onBack, onClose }: { routine: Routine; pla
                 {p.to ? (
                   <>
                     <span className="t-headline">{p.to.name}</span>
-                    <span className="t-caption c-2">{toInfo ? toInfo.equipment : ''}</span>
+                    <span className="t-caption c-2">{toInfo ? needsOf(toInfo.id).join(' · ') || '맨몸' : ''}</span>
+                  </>
+                ) : p.fallback === 'skip' ? (
+                  <>
+                    <span className="t-headline c-2">오늘 제외</span>
+                    <span className="t-caption c-2">{p.slot.sets.length}세트는 오늘 빠져요</span>
                   </>
                 ) : (
-                  <span className="t-caption c-2">그대로 두고 운동 중에 정해요</span>
+                  <>
+                    <span className="t-headline c-2">{p.note ?? '대체 없음'}</span>
+                    <span className="t-caption c-2">그대로 두고 운동 중에 정해요</span>
+                  </>
                 )}
               </div>
               <div className="review-actions">
                 <button type="button" className="btn btn-sm btn-secondary btn-pill" onClick={() => setPicking(p.slot.id)}>
                   다른 운동
                 </button>
-                {p.to && (
-                  <button type="button" className="btn btn-sm btn-ghost btn-pill" onClick={() => setProposals((l) => l.map((x) => (x.slot.id === p.slot.id ? { ...x, to: null } : x)))}>
+                {p.to ? (
+                  <button type="button" className="btn btn-sm btn-ghost btn-pill" onClick={() => update(p.slot.id, (x) => ({ ...x, to: null, fallback: 'keep' }))}>
                     그대로
+                  </button>
+                ) : p.fallback === 'skip' ? (
+                  <button type="button" className="btn btn-sm btn-ghost btn-pill" onClick={() => update(p.slot.id, (x) => ({ ...x, fallback: 'keep' }))}>
+                    그대로
+                  </button>
+                ) : (
+                  <button type="button" className="btn btn-sm btn-ghost btn-pill" onClick={() => update(p.slot.id, (x) => ({ ...x, fallback: 'skip' }))}>
+                    오늘 제외
                   </button>
                 )}
               </div>
@@ -284,7 +307,7 @@ function ReviewStep({ routine, place, onBack, onClose }: { routine: Routine; pla
           );
         })}
       </ul>
-      {canRemember && (
+      {canRemember && swapped > 0 && (
         <label className="group-row toggle-row">
           <span className="group-row-main">
             <span>{place!.name}에 기억하기</span>
