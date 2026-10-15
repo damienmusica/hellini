@@ -31,6 +31,7 @@ import {
   sessionVolume,
   trimKg,
   weeklySeries,
+  weekStart,
   weekStreak,
 } from '../lib/stats';
 import { useStore } from '../lib/store';
@@ -97,7 +98,11 @@ function LogView() {
   const [ym, setYm] = useState({ y: today.getFullYear(), m: today.getMonth() });
   const [day, setDay] = useState<number | null>(null);
   const [open, setOpen] = useState<Session | null>(null);
+  // 기본은 최근 기록 목록. 달력은 날짜를 고를 때만 펼친다
+  const [calOpen, setCalOpen] = useState(false);
   const byDay = useMemo(() => sessionsByDay(state.history), [state.history]);
+  const now = Date.now();
+  const thisWeek = state.history.filter((s) => s.startedAt >= weekStart(now));
 
   const first = new Date(ym.y, ym.m, 1);
   const daysInMonth = new Date(ym.y, ym.m + 1, 0).getDate();
@@ -105,8 +110,8 @@ function LogView() {
   const monthStart = first.getTime();
   const monthEnd = new Date(ym.y, ym.m + 1, 1).getTime();
   const inMonth = state.history.filter((s) => s.startedAt >= monthStart && s.startedAt < monthEnd);
-  const shown = day !== null ? inMonth.filter((s) => dayStart(s.startedAt) === day) : inMonth;
-  const todayStart = dayStart(Date.now());
+  const shown = day !== null ? inMonth.filter((s) => dayStart(s.startedAt) === day) : calOpen ? inMonth : state.history.slice(0, 30);
+  const todayStart = dayStart(now);
 
   const shift = (d: number) => {
     setDay(null);
@@ -118,6 +123,18 @@ function LogView() {
 
   return (
     <>
+      <div className="week-summary">
+        <span className="t-caption c-2">이번 주</span>
+        <span className="num week-row-count">
+          {thisWeek.length}
+          <span className="c-2">회</span>
+        </span>
+        <span className="t-caption c-2 num">볼륨 {formatVolume(thisWeek.reduce((n, s) => n + sessionVolume(s), 0))}</span>
+        <button type="button" className="btn btn-sm btn-secondary btn-pill week-summary-cal" aria-expanded={calOpen} onClick={() => setCalOpen((v) => !v)}>
+          <Icon name="calendar" size={16} /> {calOpen ? '달력 접기' : '달력'}
+        </button>
+      </div>
+      {calOpen && (
       <div className="card calendar">
         <div className="calendar-head">
           <button type="button" className="icon-btn is-plain" aria-label="이전 달" onClick={() => shift(-1)}>
@@ -159,6 +176,7 @@ function LogView() {
           {monthLabel(ym.y, ym.m)} · {inMonth.length}회 · 볼륨 {formatVolume(inMonth.reduce((n, s) => n + sessionVolume(s), 0))}
         </p>
       </div>
+      )}
 
       {day !== null && (
         <button type="button" className="btn btn-ghost btn-sm filter-clear" onClick={() => setDay(null)}>
@@ -167,7 +185,7 @@ function LogView() {
       )}
 
       {shown.length === 0 ? (
-        <p className="empty-note">이 달에는 운동 기록이 없어요.</p>
+        <p className="empty-note">{calOpen ? '이 달에는 운동 기록이 없어요.' : '아직 기록이 없어요.'}</p>
       ) : (
         <ul className="session-list">
           {shown.map((s) => (

@@ -8,14 +8,17 @@ import { formatCountdown } from '../../lib/timer';
 import type { ActiveSession } from '../../lib/types';
 import { setLabels } from './ExerciseCard';
 
-export function nextSetText(a: ActiveSession): string | null {
+export function nextSetText(a: ActiveSession, short = false): string | null {
   if (!a.rest) return null;
   const next = nextPendingSet(a.exercises, a.rest.exIdx, a.rest.setIdx);
   if (!next) return null;
   const ex = a.exercises[next.exIdx];
   const label = setLabels(ex.sets)[next.setIdx];
   const set = ex.sets[next.setIdx];
-  return `${ex.name} ${/\d/.test(label) ? `${label}세트` : label} · ${formatSet(ex.kind, set)}`;
+  const setText = /\d/.test(label) ? `${label}세트` : label;
+  // 같은 종목이면 이름은 생략해 하단 바에서 잘리지 않게
+  const name = short && next.exIdx === a.rest.exIdx ? '' : `${ex.name} `;
+  return `${name}${setText} · ${formatSet(ex.kind, set)}`;
 }
 
 function ratio(remainingMs: number, totalSec: number): number {
@@ -45,7 +48,7 @@ export function RestBar({ a, now, onExpand }: { a: ActiveSession; now: number; o
 
   if (!a.rest) return null;
   const remaining = a.rest.endsAt - now;
-  const next = nextSetText(a);
+  const next = nextSetText(a, true);
   return (
     <div className={`rest-bar${remaining <= 3000 ? ' is-ending' : ''}`} role="timer" aria-label="휴식 타이머">
       <div className="rest-bar-progress" style={{ transform: `scaleX(${ratio(remaining, a.rest.totalSec)})` }} />

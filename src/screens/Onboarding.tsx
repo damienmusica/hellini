@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { findExercise } from '../data/exercises';
-import { instantiateProgram, PROGRAMS, recommendProgram, type Experience, type Place, type Program } from '../data/programs';
+import { instantiateProgram, programFacts, PROGRAMS, recommendProgram, type Experience, type Place, type Program } from '../data/programs';
 import { Icon } from '../components/Icon';
 import { useStore } from '../lib/store';
 
@@ -57,8 +57,10 @@ export function ProgramPreview({ program }: { program: Program }) {
     <div className="program-preview">
       <div className="program-tags">
         <span className="tag">{program.level}</span>
+        <span className="tag">{program.purpose}</span>
         <span className="tag">{program.days}</span>
-        <span className="tag">{program.place === 'home' ? '집' : '헬스장'}</span>
+        <span className="tag">회당 약 {programFacts(program).minutes}분</span>
+        <span className="tag">{programFacts(program).equipment.join('·') || '맨몸'}</span>
       </div>
       <p className="c-2">{program.description}</p>
       {program.routines.map((r) => (

@@ -285,6 +285,7 @@
 
 .set-head {
   min-height: 28px;
+  white-space: nowrap;
   color: var(--text-2);
   font-size: 13px;
   font-weight: 600;
@@ -1138,4 +1139,68 @@
   font-size: 14px;
   color: var(--text-2);
   font-variant-numeric: tabular-nums;
+}
+
+/* 좁은 폰(320px): 열을 조금 줄이되 터치 영역은 44 이상 */
+@media (max-width: 359px) {
+  .set-row {
+    grid-template-columns: 34px minmax(0, 1fr) 70px 58px 46px;
+    gap: 4px;
+  }
+
+  .set-table.is-time .set-row {
+    grid-template-columns: 34px minmax(0, 1fr) 84px 46px;
+  }
+
+  .set-row.is-current .set-cell {
+    font-size: 24px;
+  }
+}
+
+/* 완료 화면 v3: 수행 요약이 먼저, 장식은 뒤로 */
+.complete-title {
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.complete-sub {
+  color: var(--text-2);
+}
+
+.complete-kpis {
+  display: flex;
+  gap: 16px;
+  padding: 12px 4px;
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.complete-kpis > span {
+  display: flex;
+  flex-direction: column;
+}
+
+.complete-kpis strong {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.complete-kpis small {
+  font-size: 13px;
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.complete-kpis .is-gold strong {
+  color: var(--gold-text);
+}
+
+.complete details summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-2);
+  padding: 8px 4px;
 }

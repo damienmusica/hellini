@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { findExercise } from '../data/exercises';
-import { defaultSetsFor, instantiateProgram, PROGRAMS, type Program } from '../data/programs';
+import { defaultSetsFor, instantiateProgram, programFacts, PROGRAMS, type Program } from '../data/programs';
 import { ExercisePicker } from '../components/ExercisePicker';
 import { Icon } from '../components/Icon';
 import { Keypad } from '../components/Keypad';
@@ -108,10 +108,12 @@ export function Routines() {
             <button type="button" className="card program-card" onClick={() => setProgram(p)}>
               <span className="program-card-top">
                 <span className="tag">{p.level}</span>
-                <span className="t-caption c-3">{p.summary}</span>
+                <span className="tag">{p.purpose}</span>
               </span>
               <span className="t-headline">{p.name}</span>
-              <span className="t-caption c-2 clamp-2">{p.description}</span>
+              <span className="t-caption c-2">
+                {p.summary} · 회당 약 {programFacts(p).minutes}분 · {programFacts(p).equipment.join('·') || '맨몸'}
+              </span>
             </button>
           </li>
         ))}

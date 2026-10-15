@@ -1380,3 +1380,16 @@
 .ex-actions .rest-chip {
   margin-left: 0;
 }
+
+/* ---------- 기록 v3: 최근 목록이 먼저 ---------- */
+
+.week-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 4px;
+}
+
+.week-summary-cal {
+  margin-left: auto;
+}

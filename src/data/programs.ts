@@ -9,6 +9,8 @@ export interface Program {
   id: string;
   name: string;
   summary: string;
+  /** 무엇을 위한 프로그램인지 한 단어 */
+  purpose: string;
   level: '입문' | '초급' | '중급';
   days: string;
   place: 'gym' | 'home';
@@ -21,6 +23,7 @@ export const PROGRAMS: Program[] = [
     id: 'fullbody',
     name: '헬린이 무분할',
     summary: '주 2~3회 · A/B 번갈아',
+    purpose: '습관·자세',
     level: '입문',
     days: '주 2~3회',
     place: 'gym',
@@ -52,6 +55,7 @@ export const PROGRAMS: Program[] = [
     id: 'upper-lower',
     name: '상하체 2분할',
     summary: '주 4회 · 상체/하체 번갈아',
+    purpose: '근비대 입문',
     level: '초급',
     days: '주 4회',
     place: 'gym',
@@ -85,6 +89,7 @@ export const PROGRAMS: Program[] = [
     id: 'ppl',
     name: '3분할 (밀기·당기기·하체)',
     summary: '주 3~6회 · 밀기/당기기/하체',
+    purpose: '근비대',
     level: '중급',
     days: '주 3~6회',
     place: 'gym',
@@ -127,7 +132,8 @@ export const PROGRAMS: Program[] = [
   {
     id: 'ppl-ab',
     name: 'PPL A/B (6일 순환)',
-    summary: '주 5~6회 · 근비대 · 6개 루틴 순서대로',
+    summary: '주 5~6회 · 6개 루틴 순서대로',
+    purpose: '근비대 · 매일',
     level: '중급',
     days: '주 5~6회',
     place: 'gym',
@@ -206,6 +212,7 @@ export const PROGRAMS: Program[] = [
     id: 'five-by-five',
     name: '5×5 바벨',
     summary: '주 3회 · A/B 번갈아',
+    purpose: '근력',
     level: '초급',
     days: '주 3회',
     place: 'gym',
@@ -233,6 +240,7 @@ export const PROGRAMS: Program[] = [
     id: 'home',
     name: '홈트 전신',
     summary: '주 3회 · 기구 없이',
+    purpose: '습관 · 맨몸',
     level: '입문',
     days: '주 3회',
     place: 'home',
@@ -300,6 +308,23 @@ export function instantiateProgram(program: Program, now: number): Routine[] {
     updatedAt: now,
     exercises: r.rows.map(([id, sets, reps, rest]) => planExercise(id, sets, reps, rest, program.place === 'home')),
   }));
+}
+
+/** 프로그램 카드에 바로 보여줄 사실: 회당 대략 시간, 필요한 장비 (세트당 40초 + 휴식 + 종목 전환 1분) */
+export function programFacts(program: Program): { minutes: number; equipment: Equipment[] } {
+  const equipment: Equipment[] = [];
+  let total = 0;
+  for (const r of program.routines) {
+    let sec = 0;
+    for (const [id, sets, reps, rest = 90] of r.rows) {
+      const info = findExercise(id);
+      if (info && info.equipment !== '맨몸' && info.equipment !== '기타' && !equipment.includes(info.equipment)) equipment.push(info.equipment);
+      sec += sets * (info?.kind === 'time' ? reps : 40) + Math.max(0, sets - 1) * rest + 60;
+    }
+    total += sec;
+  }
+  const minutes = Math.max(5, Math.round(total / program.routines.length / 60 / 5) * 5);
+  return { minutes, equipment };
 }
 
 export function findProgram(id: string): Program | undefined {

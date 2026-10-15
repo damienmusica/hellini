@@ -599,49 +599,6 @@ function FinishSheet({ a, onClose, onFinished }: { a: ActiveSession; onClose: ()
         </div>
       </div>
       {pending > 0 && <p className="t-caption c-2">완료하지 않은 {pending}세트는 기록에서 빠져요. 실패로 치지 않아요.</p>}
-      {routine && (changes.targets.length > 0 || changes.structure.length > 0) && (
-        <div className="apply-box">
-          <p className="t-caption c-2">'{routine.name}' 기본 루틴에 반영할 것</p>
-          {away && <p className="t-caption c-3">{a.place?.name}에서 한 기록이라 기본으로 반영하지 않아요. 기구가 같으면 켜도 돼요.</p>}
-          {changes.targets.length > 0 && (
-            <label className="group-row toggle-row">
-              <span className="group-row-main">
-                <span>다음 목표 올리기</span>
-                <ChangeList items={changes.targets} />
-              </span>
-              <span className="switch">
-                <input
-                  type="checkbox"
-                  role="switch"
-                  aria-label="다음 목표 올리기"
-                  checked={apply.targets}
-                  onChange={(e) => setApply((x) => ({ ...x, targets: e.target.checked }))}
-                />
-                <span />
-              </span>
-            </label>
-          )}
-          {changes.structure.length > 0 && (
-            <label className="group-row toggle-row">
-              <span className="group-row-main">
-                <span>종목 구성도 바꾸기</span>
-                <ChangeList items={changes.structure} />
-                <span className="t-caption c-3">끄면 오늘 바꾼 종목은 오늘만 적용돼요</span>
-              </span>
-              <span className="switch">
-                <input
-                  type="checkbox"
-                  role="switch"
-                  aria-label="종목 구성도 바꾸기"
-                  checked={apply.structure}
-                  onChange={(e) => setApply((x) => ({ ...x, structure: e.target.checked }))}
-                />
-                <span />
-              </span>
-            </label>
-          )}
-        </div>
-      )}
       <div className="btn-row">
         <button type="button" className="btn btn-secondary btn-lg" onClick={onClose}>
           계속하기
@@ -658,9 +615,53 @@ function FinishSheet({ a, onClose, onFinished }: { a: ActiveSession; onClose: ()
             onFinished(a.id);
           }}
         >
-          운동 완료
+          운동 저장
         </button>
       </div>
+      {routine && (changes.targets.length > 0 || changes.structure.length > 0) && (
+        <div className="apply-box">
+          <p className="t-caption c-2">저장하면서 '{routine.name}' 기본 루틴에 반영할 것 (검토)</p>
+          {away && <p className="t-caption c-2">{a.place?.name}에서 한 기록이라 기본으로 반영하지 않아요. 기구가 같으면 켜도 돼요.</p>}
+          {changes.targets.length > 0 && (
+            <label className="group-row toggle-row">
+              <span className="group-row-main">
+                <span>오늘 기록을 다음 기본값에 반영</span>
+                <ChangeList items={changes.targets} />
+                <span className="t-caption c-2">오늘 더 한 무게·횟수를 기본값으로 복사해요. 증량 제안은 다음 운동을 시작할 때 따로 떠요.</span>
+              </span>
+              <span className="switch">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  aria-label="오늘 기록을 다음 기본값에 반영"
+                  checked={apply.targets}
+                  onChange={(e) => setApply((x) => ({ ...x, targets: e.target.checked }))}
+                />
+                <span />
+              </span>
+            </label>
+          )}
+          {changes.structure.length > 0 && (
+            <label className="group-row toggle-row">
+              <span className="group-row-main">
+                <span>종목 구성도 바꾸기</span>
+                <ChangeList items={changes.structure} />
+                <span className="t-caption c-2">끄면 오늘 바꾼 종목은 오늘만 적용돼요</span>
+              </span>
+              <span className="switch">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  aria-label="종목 구성도 바꾸기"
+                  checked={apply.structure}
+                  onChange={(e) => setApply((x) => ({ ...x, structure: e.target.checked }))}
+                />
+                <span />
+              </span>
+            </label>
+          )}
+        </div>
+      )}
     </Sheet>
   );
 }

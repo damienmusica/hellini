@@ -10,6 +10,7 @@ import {
   doneSets,
   formatDuration,
   formatSet,
+  formatVolume,
   sessionDuration,
   sessionsThisWeek,
   sessionVolume,
@@ -17,21 +18,15 @@ import {
   weekStreak,
 } from '../../lib/stats';
 import { useStore } from '../../lib/store';
-import { useCountUp } from '../../lib/useCountUp';
 
 const MILESTONES = new Set([1, 5, 10, 20, 30, 50, 75, 100, 150, 200, 300, 365, 500]);
-
-function CountUp({ value, format }: { value: number; format: (n: number) => string }) {
-  const v = useCountUp(value);
-  return <>{format(v)}</>;
-}
 
 const CONFETTI_COLORS = ['var(--accent)', 'var(--gold)', 'var(--success)', 'var(--work)'];
 
 function Confetti() {
   const pieces = useMemo(
     () =>
-      Array.from({ length: 28 }, (_, i) => ({
+      Array.from({ length: 24 }, (_, i) => ({
         left: Math.random() * 100,
         delay: Math.random() * 0.25,
         rotate: Math.random() * 360,
@@ -60,6 +55,10 @@ function Confetti() {
   );
 }
 
+/**
+ * 운동 저장 뒤 요약. 실제 수행(세트·종목별 결과)과 새 기록이 먼저, 주간 현황과 근육 지도는 그 아래, 공유는 마지막.
+ * 숫자 카운트업과 긴 격려문은 쓰지 않는다. 컨페티는 PR이나 기념 회차일 때만.
+ */
 export function WorkoutComplete({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
   const { state } = useStore();
   const toast = useToast();
@@ -77,6 +76,7 @@ export function WorkoutComplete({ sessionId, onClose }: { sessionId: string; onC
   const thisWeek = sessionsThisWeek(state.history, now);
   const goal = state.settings.weeklyGoal;
   const prExercises = new Set(prs.map((p) => p.exercise));
+  const sets = doneSets(session);
 
   const share = async () => {
     setSharing(true);
@@ -96,41 +96,54 @@ export function WorkoutComplete({ sessionId, onClose }: { sessionId: string; onC
   return (
     <section className="complete" aria-label="운동 완료">
       {celebrate && <Confetti />}
-      <div className="complete-hero">
-        <div className={`complete-medal${prs.length > 0 ? ' is-gold' : ''}`}>
-          <Icon name={prs.length > 0 ? 'trophy' : 'check'} size={44} strokeWidth={2.4} />
-        </div>
-        <h1 className="t-title">{ordinal}번째 운동 완료!</h1>
-        <p className="c-2">
-          {session.routineName} · {thisWeek >= goal ? '이번 주 목표 달성! 🎉' : '오늘도 해냈어요 💪'}
+      <div>
+        <p className="t-overline hero-kicker">{ordinal}번째 운동 저장됨</p>
+        <h1 className="complete-title">{session.routineName}</h1>
+        <p className="complete-sub">
+          {sets}세트 · {formatDuration(sessionDuration(session))}
+          {prs.length > 0 ? ` · 새 기록 ${prs.length}개` : thisWeek >= goal ? ' · 이번 주 목표 달성' : ''}
         </p>
       </div>
 
-      <div className="complete-stats">
-        <div className="card">
-          <span className="t-overline c-3">시간</span>
-          <span className="t-stat">
-            <CountUp value={Math.round(sessionDuration(session) / 60000)} format={(n) => formatDuration(Math.round(n) * 60000)} />
+      <div className="complete-kpis">
+        <span>
+          <strong className="num">{formatVolume(sessionVolume(session))}</strong>
+          <small>볼륨</small>
+        </span>
+        <span>
+          <strong className="num">{sets}</strong>
+          <small>세트</small>
+        </span>
+        <span>
+          <strong className="num">{formatDuration(sessionDuration(session))}</strong>
+          <small>시간</small>
+        </span>
+        {prs.length > 0 && (
+          <span className="is-gold">
+            <strong className="num">{prs.length}</strong>
+            <small>새 기록</small>
           </span>
-        </div>
-        <div className="card">
-          <span className="t-overline c-3">볼륨</span>
-          <span className="t-stat">
-            <CountUp value={sessionVolume(session)} format={(n) => `${Math.round(n).toLocaleString('ko-KR')}kg`} />
-          </span>
-        </div>
-        <div className="card">
-          <span className="t-overline c-3">세트</span>
-          <span className="t-stat">
-            <CountUp value={doneSets(session)} format={(n) => `${Math.round(n)}`} />
-          </span>
-        </div>
-        <div className={`card${prs.length > 0 ? ' is-gold' : ''}`}>
-          <span className="t-overline c-3">새 기록</span>
-          <span className="t-stat">
-            <CountUp value={prs.length} format={(n) => `${Math.round(n)}`} />
-          </span>
-        </div>
+        )}
+      </div>
+
+      <div className="card">
+        <h2 className="t-headline">종목별 결과</h2>
+        <ul className="summary-list">
+          {session.exercises.map((e) => {
+            const best = bestSet(e);
+            return (
+              <li key={e.id}>
+                <span>
+                  {e.name}
+                  {prExercises.has(e.name) && <Icon name="trophy" size={14} className="gold" />}
+                </span>
+                <span className="c-2 num">
+                  {e.sets.filter((s) => s.done && s.type !== 'warmup').length}세트{best ? ` · 최고 ${formatSet(e.kind, best)}` : ''}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
       </div>
 
       {prs.length > 0 && (
@@ -160,43 +173,25 @@ export function WorkoutComplete({ sessionId, onClose }: { sessionId: string; onC
                 <Icon name="flame" size={14} /> {streak}주 연속
               </span>
             )}{' '}
-            목표 {Math.min(thisWeek, goal)}/{goal}회
+            {Math.min(thisWeek, goal)}/{goal}회
           </span>
         </div>
         <WeekStrip history={state.history} now={now} />
       </div>
 
-      <div className="card">
-        <h2 className="t-headline">오늘 쓴 근육</h2>
-        <MuscleMap values={muscles} />
-      </div>
-
-      <div className="card">
-        <h2 className="t-headline">운동 기록</h2>
-        <ul className="summary-list">
-          {session.exercises.map((e) => {
-            const best = bestSet(e);
-            return (
-              <li key={e.id}>
-                <span>
-                  {e.name}
-                  {prExercises.has(e.name) && <Icon name="trophy" size={14} className="gold" />}
-                </span>
-                <span className="c-2 num">
-                  {e.sets.filter((s) => s.done && s.type !== 'warmup').length}세트{best ? ` · 최고 ${formatSet(e.kind, best)}` : ''}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
+      <details>
+        <summary>오늘 쓴 근육 보기</summary>
+        <div className="card">
+          <MuscleMap values={muscles} />
+        </div>
+      </details>
 
       <div className="complete-actions">
-        <button type="button" className="btn btn-primary btn-lg btn-block" onClick={share} disabled={sharing}>
-          <Icon name="share" size={20} /> {sharing ? '이미지 만드는 중…' : '#오운완 공유하기'}
-        </button>
-        <button type="button" className="btn btn-secondary btn-lg btn-block" onClick={onClose}>
+        <button type="button" className="btn btn-primary btn-lg btn-block" onClick={onClose}>
           닫기
+        </button>
+        <button type="button" className="btn btn-secondary btn-lg btn-block" onClick={share} disabled={sharing}>
+          <Icon name="share" size={20} /> {sharing ? '이미지 만드는 중…' : '#오운완 공유'}
         </button>
       </div>
     </section>

@@ -61,9 +61,9 @@ test('세트 표로 기록하고 휴식 타이머를 거쳐 운동을 마친다'
 
   await page.getByRole('button', { name: '완료', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText('640kg');
-  await page.getByRole('button', { name: '운동 완료' }).click();
+  await page.getByRole('button', { name: '운동 저장' }).click();
 
-  await expect(page.getByRole('heading', { name: '1번째 운동 완료!' })).toBeVisible();
+  await expect(page.getByText('1번째 운동 저장됨')).toBeVisible();
   await page.getByRole('button', { name: '닫기', exact: true }).click();
   await expect(page.getByRole('heading', { name: '최근 운동' })).toBeVisible();
   // 루틴에 오늘 기록이 반영돼 다음엔 B 차례
@@ -78,7 +78,7 @@ test('지난 기록보다 무거우면 PR 알림, 다음엔 증량을 제안한�
   await page.getByRole('button', { name: '스쿼트 2세트 완료' }).click();
   await page.getByRole('button', { name: '스쿼트 3세트 완료' }).click();
   await page.getByRole('button', { name: '완료', exact: true }).click();
-  await page.getByRole('button', { name: '운동 완료' }).click();
+  await page.getByRole('button', { name: '운동 저장' }).click();
   await page.getByRole('button', { name: '닫기', exact: true }).click();
 
   // 같은 루틴 다시
@@ -169,7 +169,7 @@ test('P0: 스쿼트 1세트 후 레그 프레스로 바꿔도 완료 세트는 �
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByText('스쿼트 → 레그 프레스')).toBeVisible();
   await expect(dialog.getByRole('switch', { name: '종목 구성도 바꾸기' })).not.toBeChecked();
-  await page.getByRole('button', { name: '운동 완료' }).click();
+  await page.getByRole('button', { name: '운동 저장' }).click();
   await page.getByRole('button', { name: '닫기', exact: true }).click();
 
   // 기본 루틴은 그대로 스쿼트
@@ -189,7 +189,7 @@ test('P1: 끝난 기록의 무게를 고치면 상세와 통계에 반영된다'
   await page.getByRole('button', { name: '운동 시작' }).click();
   await page.getByRole('button', { name: '스쿼트 1세트 완료' }).click();
   await page.getByRole('button', { name: '완료', exact: true }).click();
-  await page.getByRole('button', { name: '운동 완료' }).click();
+  await page.getByRole('button', { name: '운동 저장' }).click();
   await page.getByRole('button', { name: '닫기', exact: true }).click();
 
   await page.getByRole('button', { name: '기록', exact: true }).click();
@@ -231,7 +231,7 @@ test('호텔 짐: 장비 프리셋 → 시작 전 조정 검토 → 끝나면 �
   await page.getByRole('button', { name: '완료', exact: true }).click();
   // 다른 장소 기록은 기본 루틴에 반영하지 않는 게 기본
   await expect(page.getByRole('switch', { name: '종목 구성도 바꾸기' })).not.toBeChecked();
-  await page.getByRole('button', { name: '운동 완료' }).click();
+  await page.getByRole('button', { name: '운동 저장' }).click();
   await page.getByRole('button', { name: '닫기', exact: true }).click();
 
   await expect(page.getByRole('button', { name: '장소: 평소 헬스장' })).toBeVisible();
