@@ -99,14 +99,16 @@ export function WorkoutComplete({ sessionId, onClose }: { sessionId: string; onC
       <div>
         <p className="t-overline hero-kicker">{ordinal}번째 운동 저장됨</p>
         <h1 className="complete-title">{session.routineName}</h1>
-        <p className="complete-sub">
-          {sets}세트 · {formatDuration(sessionDuration(session))}
-          {prs.length > 0 ? ` · 새 기록 ${prs.length}개` : thisWeek >= goal ? ' · 이번 주 목표 달성' : ''}
-        </p>
+        {/* 세트·시간은 아래 숫자 행에 있으므로 여기서 반복하지 않는다 */}
+        {(session.place || prs.length > 0 || thisWeek >= goal) && (
+          <p className="complete-sub">
+            {[session.place?.name, prs.length > 0 ? `새 기록 ${prs.length}개` : thisWeek >= goal ? '이번 주 목표 달성' : null].filter(Boolean).join(' · ')}
+          </p>
+        )}
       </div>
 
       <div className="complete-kpis">
-        <span>
+        <span className="is-hero">
           <strong className="num">{formatVolume(sessionVolume(session))}</strong>
           <small>볼륨</small>
         </span>

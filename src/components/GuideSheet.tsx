@@ -92,10 +92,7 @@ export function GuideSheet({ exerciseId, name, rest, now, onPick, from, diff, on
               ))}
             </ol>
           ) : (
-            <div className="tip-box">
-              <Icon name="info" size={18} />
-              <p>{info.tip}</p>
-            </div>
+            <p className="t-caption c-2">단계별 설명은 아직 없어요. 위 한 줄 팁과 참고 영상으로 확인해요.</p>
           )}
           {guide && guide.mistakes.length > 0 && (
             <details className="guide-more">

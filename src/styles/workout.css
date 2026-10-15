@@ -1299,9 +1299,19 @@
 }
 
 .complete-kpis strong {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+
+/* 핵심 숫자 하나(볼륨)만 크게, 나머지는 보조 (Bevel식 위계) */
+.complete-kpis .is-hero strong {
+  font-size: 32px;
+  line-height: 1.1;
+}
+
+.complete-kpis > span {
+  justify-content: flex-end;
 }
 
 .complete-kpis small {
