@@ -20,7 +20,8 @@ const DAYS: Choice<number>[] = [
   { value: 2, title: '주 2회', desc: '가볍게 습관부터' },
   { value: 3, title: '주 3회', desc: '초보에게 가장 좋은 빈도' },
   { value: 4, title: '주 4회', desc: '본격적으로' },
-  { value: 5, title: '주 5회 이상', desc: '운동이 일상' },
+  { value: 5, title: '주 5회', desc: '운동이 일상' },
+  { value: 6, title: '거의 매일', desc: '주 6회 이상' },
 ];
 
 const PLACES: Choice<Place>[] = [

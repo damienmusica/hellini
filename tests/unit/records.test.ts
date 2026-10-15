@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { instantiateProgram, PROGRAMS, recommendProgram } from '../../src/data/programs';
 import { estimate1RM, sessionPRs, setPRs, bestsByExercise, muscleSets } from '../../src/lib/records';
 import { platesPerSide, suggestProgression, warmupSets } from '../../src/lib/progression';
 import { nextRoutine, weekStreak, weekStart } from '../../src/lib/stats';
@@ -115,5 +116,36 @@ describe('주간·루틴 순환', () => {
     expect(nextRoutine(routines, [])?.id).toBe('A');
     expect(nextRoutine(routines, [session('x', 1, [s(1, 1)], 'B')])?.id).toBe('C');
     expect(nextRoutine(routines, [session('x', 1, [s(1, 1)], 'C')])?.id).toBe('A');
+  });
+
+  it('같은 프로그램 루틴끼리 순서대로 돈다', () => {
+    const r = (id: string, note?: string) => ({ id, name: id, note, exercises: [], updatedAt: 0 }) as Routine;
+    const routines = [r('old'), r('PA', 'PPL'), r('QA', 'PPL'), r('LA', 'PPL'), r('mine')];
+    expect(nextRoutine(routines, [session('x', 1, [s(1, 1)], 'LA')])?.id).toBe('PA');
+    expect(nextRoutine(routines, [session('x', 1, [s(1, 1)], 'PA')])?.id).toBe('QA');
+    expect(nextRoutine(routines, [session('x', 1, [s(1, 1)], 'mine')])?.id).toBe('old');
+  });
+});
+
+describe('추천 프로그램', () => {
+  it('모든 프로그램 종목이 라이브러리에 있다', () => {
+    for (const p of PROGRAMS) expect(() => instantiateProgram(p, 0)).not.toThrow();
+  });
+
+  it('거의 매일 하면 PPL A/B, 6개 루틴이 한 프로그램으로 묶인다', () => {
+    const p = recommendProgram('some', 6, 'gym');
+    expect(p.id).toBe('ppl-ab');
+    expect(recommendProgram('regular', 5, 'gym').id).toBe('ppl-ab');
+    expect(recommendProgram('some', 5, 'gym').id).toBe('upper-lower');
+    const routines = instantiateProgram(p, 0);
+    expect(routines).toHaveLength(6);
+    let r = nextRoutine(routines, [])!;
+    const order = [r.name];
+    for (let i = 0; i < 6; i++) {
+      r = nextRoutine(routines, [session(`s${i}`, i, [s(1, 1)], r.id)])!;
+      order.push(r.name);
+    }
+    expect(order[6]).toBe(order[0]);
+    expect(new Set(order).size).toBe(6);
   });
 });

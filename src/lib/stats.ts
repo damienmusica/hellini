@@ -131,8 +131,11 @@ export function nextRoutine(routines: Routine[], history: Session[]): Routine | 
   if (routines.length === 0) return undefined;
   const last = history.find((s) => s.routineId && routines.some((r) => r.id === s.routineId));
   if (!last) return routines[0];
-  const i = routines.findIndex((r) => r.id === last.routineId);
-  return routines[(i + 1) % routines.length];
+  // 같은 프로그램에서 추가한 루틴끼리만 돈다 (다른 루틴이 섞여 있어도 A/B 순서가 깨지지 않게)
+  const current = routines.find((r) => r.id === last.routineId)!;
+  const group = current.note ? routines.filter((r) => r.note === current.note) : routines;
+  const i = group.indexOf(current);
+  return group[(i + 1) % group.length];
 }
 
 /** 부위별 마지막 운동일로부터 지난 날 수 */

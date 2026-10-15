@@ -125,6 +125,84 @@ export const PROGRAMS: Program[] = [
     ],
   },
   {
+    id: 'ppl-ab',
+    name: 'PPL A/B (6일 순환)',
+    summary: '주 5~6회 · 근비대 · 6개 루틴 순서대로',
+    level: '중급',
+    days: '주 5~6회',
+    place: 'gym',
+    description:
+      '밀기·당기기·하체를 A(가슴·스쿼트 중심)와 B(어깨·힙힌지 중심)로 나눠 6일에 한 바퀴 돌아요. 요일이 아니라 순서라서 하루 쉬어도 다음 차례부터 이어져요. 부위마다 6일에 두 번, 주당 10~16세트쯤 돼요.',
+    routines: [
+      {
+        name: '밀기 A (가슴 중심)',
+        rows: [
+          ['bench-press', 4, 8, 150],
+          ['incline-dumbbell-press', 3, 10, 90],
+          ['dumbbell-shoulder-press', 3, 10, 90],
+          ['lateral-raise', 4, 15, 60],
+          ['triceps-pushdown', 3, 12, 60],
+          ['overhead-triceps-extension', 3, 12, 60],
+        ],
+      },
+      {
+        name: '당기기 A (등 넓이)',
+        rows: [
+          ['lat-pulldown', 4, 10, 90],
+          ['barbell-row', 4, 8, 120],
+          ['seated-cable-row', 3, 12, 90],
+          ['face-pull', 3, 15, 60],
+          ['barbell-curl', 3, 10, 60],
+          ['hammer-curl', 3, 12, 60],
+        ],
+      },
+      {
+        name: '하체 A (스쿼트 중심)',
+        rows: [
+          ['squat', 4, 8, 150],
+          ['leg-press', 3, 12, 90],
+          ['leg-extension', 3, 15, 60],
+          ['leg-curl', 3, 12, 60],
+          ['calf-raise', 4, 15, 60],
+          ['hanging-leg-raise', 3, 12, 60],
+        ],
+      },
+      {
+        name: '밀기 B (어깨 중심)',
+        rows: [
+          ['overhead-press', 4, 8, 120],
+          ['incline-bench-press', 3, 10, 120],
+          ['chest-press-machine', 3, 12, 90],
+          ['cable-lateral-raise', 4, 15, 60],
+          ['pec-deck', 3, 15, 60],
+          ['skull-crusher', 3, 10, 60],
+        ],
+      },
+      {
+        name: '당기기 B (등 두께)',
+        rows: [
+          ['deadlift', 3, 5, 180],
+          ['t-bar-row', 3, 10, 120],
+          ['lat-pulldown', 3, 12, 90],
+          ['rear-delt-fly', 3, 15, 60],
+          ['preacher-curl', 3, 12, 60],
+          ['cable-curl', 3, 12, 60],
+        ],
+      },
+      {
+        name: '하체 B (힙힌지 중심)',
+        rows: [
+          ['romanian-deadlift', 4, 10, 120],
+          ['hack-squat', 3, 10, 120],
+          ['hip-thrust', 3, 10, 90],
+          ['leg-curl', 3, 12, 60],
+          ['calf-raise', 4, 15, 60],
+          ['cable-crunch', 3, 15, 60],
+        ],
+      },
+    ],
+  },
+  {
     id: 'five-by-five',
     name: '5×5 바벨',
     summary: '주 3회 · A/B 번갈아',
@@ -236,7 +314,8 @@ export function recommendProgram(experience: Experience, days: number, place: Pl
   if (place === 'home') return findProgram('home')!;
   if (experience === 'new' || days <= 3) return findProgram(experience === 'regular' ? 'five-by-five' : 'fullbody')!;
   if (days === 4) return findProgram('upper-lower')!;
-  return findProgram(experience === 'regular' ? 'ppl' : 'upper-lower')!;
+  if (days >= 6 || experience === 'regular') return findProgram('ppl-ab')!;
+  return findProgram('upper-lower')!;
 }
 
 /** 새로 추가하는 종목의 기본 세트: 지난 기록이 있으면 그대로, 없으면 3세트 가볍게 */
