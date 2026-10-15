@@ -75,12 +75,17 @@ export interface ExerciseLog {
 
 export type Equipment = '바벨' | '덤벨' | '머신' | '케이블' | '맨몸' | '케틀벨' | '스미스' | '기타';
 
+/** 장비 종류만으로는 모자란 필수 보조 장비 (벤치, 인클라인 벤치, 랙, 풀업바) */
+export type Feature = '벤치' | '인클라인 벤치' | '랙' | '풀업바';
+
 /** 운동하는 장소. 기본 장소(main)는 장비 제한이 없다 */
 export interface Place {
   id: string;
   name: string;
   /** 있는 장비. 없으면 전부 있는 것으로 본다. 맨몸·기타는 항상 가능 */
   equipment?: Equipment[];
+  /** 있는 보조 장비. 없으면 전부 있는 것으로 본다 (v3 이전 장소와 호환) */
+  features?: Feature[];
   /** 이 장소에 기구가 없는 종목 id */
   unavailable: string[];
   /** 이 장소에서 시작할 때 자동으로 바꿀 종목: 원래 id → 대신할 id */
@@ -90,7 +95,7 @@ export interface Place {
 }
 
 /** 세션에 남기는 장소 사본 (장소를 지우거나 이름을 바꿔도 기록은 그대로) */
-export type SessionPlace = Pick<Place, 'id' | 'name' | 'equipment'>;
+export type SessionPlace = Pick<Place, 'id' | 'name' | 'equipment' | 'features'>;
 
 export interface RestTimer {
   endsAt: number;

@@ -36,12 +36,12 @@ export function routineSummary(r: Routine): string {
   return r.exercises.map((e) => e.name).join(' · ') || '종목 없음';
 }
 
-function greeting(now: number): string {
-  const h = new Date(now).getHours();
-  if (h < 5) return '늦은 밤 열정 최고!';
-  if (h < 11) return '좋은 아침이에요';
-  if (h < 17) return '오늘도 득근해요';
-  return '저녁 운동 가볼까요?';
+/** 같은 프로그램 안에서 몇 번째 차례인지 (프로그램이 아니면 null) */
+function cyclePosition(routines: Routine[], r: Routine): { program: string; index: number; total: number } | null {
+  if (!r.note) return null;
+  const group = routines.filter((x) => x.note === r.note);
+  if (group.length < 2) return null;
+  return { program: r.note, index: group.indexOf(r) + 1, total: group.length };
 }
 
 interface Props {
@@ -51,6 +51,10 @@ interface Props {
   onGoBody?: () => void;
 }
 
+/**
+ * 홈: 오늘 무엇을 할지가 먼저. 진행 중인 운동이 있으면 재개가 유일한 주요 행동이다.
+ * 주간 목표는 작은 진행 요약으로, 다른 루틴과 최근 기록은 그 아래.
+ */
 export function Home({ onOpenWorkout, onOpenSettings, onGoRoutines, onGoBody }: Props) {
   const { state, dispatch } = useStore();
   const now = Date.now();
@@ -62,56 +66,50 @@ export function Home({ onOpenWorkout, onOpenSettings, onGoRoutines, onGoBody }: 
   const lastOfNext = next ? state.history.find((s) => s.routineId === next.id) : undefined;
   const needsBackup =
     state.history.length >= 5 && (!state.settings.lastBackupAt || now - state.settings.lastBackupAt > 30 * DAY);
-  const [placeOpen, setPlaceOpen] = useState(false);
+  const [placeOpen, setPlaceOpen] = useState<'list' | 'review' | null>(null);
   const place = state.places.find((p) => p.id === state.settings.placeId);
   const away = place && place.id !== MAIN_PLACE_ID;
   const missing = next && place ? unavailableIn(place, next.exercises) : [];
+  const cycle = next ? cyclePosition(state.routines, next) : null;
 
   const start = (routine: Routine | null) => {
     if (state.active) {
       onOpenWorkout();
       return;
     }
+    // 이 장소에서 못 하는 종목이 있으면 시작 전에 대체안을 검토한다
+    if (routine && routine === next && missing.length > 0) {
+      setPlaceOpen('review');
+      return;
+    }
     dispatch({ type: 'session/start', routine, now: Date.now() });
   };
 
+  const placeChip = (
+    <button type="button" className={`place-chip${away ? ' is-away' : ''}`} onClick={() => setPlaceOpen('list')} aria-label={`장소: ${place?.name ?? '평소 헬스장'}`}>
+      <Icon name="pin" size={14} />
+      {place?.name ?? '평소 헬스장'}
+      {missing.length > 0 && <span className="place-chip-note">· 조정 {missing.length}</span>}
+      <Icon name="chevronDown" size={14} />
+    </button>
+  );
+
   return (
-    <section className="screen">
-      <header className="screen-header">
+    <section className="screen home">
+      <header className="screen-header home-header">
         <div>
           <p className="t-caption c-2">{formatDate(now)}</p>
-          <h1 className="t-title">{greeting(now)}</h1>
+          <p className="home-brand">헬린이</p>
         </div>
         <button type="button" className="icon-btn" aria-label="설정" onClick={onOpenSettings}>
           <Icon name="gear" size={20} />
         </button>
       </header>
 
-      <div className="card week-card">
-        <div className="row-between">
-          <div>
-            <span className="t-overline c-3">이번 주 목표</span>
-            <p className="t-section num">
-              {Math.min(thisWeek, goal)}
-              <span className="c-3">/{goal}회</span>
-            </p>
-          </div>
-          {streak > 0 && (
-            <span className="streak-badge">
-              <Icon name="flame" size={16} /> {streak}주 연속
-            </span>
-          )}
-        </div>
-        <div className="goal-bar" aria-hidden="true">
-          <span style={{ transform: `scaleX(${Math.min(1, thisWeek / goal)})` }} />
-        </div>
-        <WeekStrip history={state.history} now={now} />
-      </div>
-
       {state.active ? (
-        <div className="card hero-card is-active">
-          <span className="t-overline accent">진행 중인 운동</span>
-          <h2 className="t-section">{state.active.routineName}</h2>
+        <div className="hero is-active">
+          <span className="t-overline hero-kicker">진행 중인 운동</span>
+          <h1 className="t-title">{state.active.routineName}</h1>
           <p className="c-2">
             {doneSets(state.active)}세트 완료 · {formatDuration(now - state.active.startedAt)} 지남
           </p>
@@ -120,43 +118,48 @@ export function Home({ onOpenWorkout, onOpenSettings, onGoRoutines, onGoBody }: 
           </button>
         </div>
       ) : next ? (
-        <div className="card hero-card">
-          <span className="t-overline accent">오늘의 루틴</span>
-          <h2 className="t-section">{next.name}</h2>
+        <div className="hero">
+          <span className="t-overline hero-kicker">
+            오늘{cycle ? ` · ${cycle.program} ${cycle.index}/${cycle.total}` : ''}
+          </span>
+          <h1 className="t-title">{next.name}</h1>
+          {placeChip}
           <p className="c-2 hero-summary">{routineSummary(next)}</p>
           <div className="hero-meta">
-            <span>
-              <Icon name="dumbbell" size={15} /> {next.exercises.length}종목 · {next.exercises.reduce((n, e) => n + e.sets.length, 0)}세트
-            </span>
-            <span>
-              <Icon name="clock" size={15} /> 약 {estimateMinutes(next)}분
-            </span>
-            {lastOfNext && (
-              <span>
-                <Icon name="calendar" size={15} /> 지난번 {relativeDay(lastOfNext.startedAt, now)}
-              </span>
-            )}
+            <span>{next.exercises.length}종목 · 약 {estimateMinutes(next)}분</span>
+            {lastOfNext && <span>지난번 {relativeDay(lastOfNext.startedAt, now)}</span>}
+            {missing.length > 0 && <span className="c-warn">조정 필요 {missing.length}종목</span>}
           </div>
-          <button type="button" className={`place-chip${away ? ' is-away' : ''}`} onClick={() => setPlaceOpen(true)} aria-label={`장소: ${place?.name ?? '평소 헬스장'}`}>
-            <Icon name="pin" size={14} />
-            {place?.name ?? '평소 헬스장'}
-            {missing.length > 0 && <span className="place-chip-note">· {missing.length}종목 기구 없음</span>}
-            <Icon name="chevronDown" size={14} />
-          </button>
           <button type="button" className="btn btn-primary btn-lg btn-block" onClick={() => start(next)}>
             <Icon name="play" size={16} /> 운동 시작
           </button>
         </div>
       ) : (
-        <div className="card hero-card">
-          <span className="t-overline accent">시작하기</span>
-          <h2 className="t-section">루틴이 아직 없어요</h2>
+        <div className="hero">
+          <span className="t-overline hero-kicker">시작하기</span>
+          <h1 className="t-title">루틴이 아직 없어요</h1>
           <p className="c-2">추천 프로그램에서 고르거나 직접 만들어 보세요.</p>
           <button type="button" className="btn btn-primary btn-lg btn-block" onClick={onGoRoutines}>
             루틴 고르기
           </button>
         </div>
       )}
+
+      <div className="week-row">
+        <div className="week-row-head">
+          <span className="t-caption c-2">이번 주</span>
+          <span className="num week-row-count">
+            {Math.min(thisWeek, goal)}
+            <span className="c-2">/{goal}회</span>
+          </span>
+          {streak > 0 && (
+            <span className="t-caption c-2">
+              <Icon name="flame" size={13} /> {streak}주 연속
+            </span>
+          )}
+        </div>
+        <WeekStrip history={state.history} now={now} />
+      </div>
 
       {needsBodyCheck(state.body, now) && onGoBody && (
         <button type="button" className="banner" onClick={onGoBody}>
@@ -173,7 +176,7 @@ export function Home({ onOpenWorkout, onOpenSettings, onGoRoutines, onGoBody }: 
         </button>
       )}
 
-      {state.routines.length > 1 && (
+      {!state.active && state.routines.length > 1 && (
         <>
           <div className="section-head">
             <h2 className="t-section">다른 루틴</h2>
@@ -189,7 +192,7 @@ export function Home({ onOpenWorkout, onOpenSettings, onGoRoutines, onGoBody }: 
                 <div key={r.id} className="group-row">
                   <span className="group-row-main">
                     <span className="t-headline">{r.name}</span>
-                    <span className="t-caption c-3 ellipsis">{routineSummary(r)}</span>
+                    <span className="t-caption c-2 ellipsis">{routineSummary(r)}</span>
                   </span>
                   <button type="button" className="icon-btn start-btn" aria-label={`${r.name} 시작`} onClick={() => start(r)}>
                     <Icon name="play" size={14} />
@@ -200,17 +203,14 @@ export function Home({ onOpenWorkout, onOpenSettings, onGoRoutines, onGoBody }: 
         </>
       )}
 
-      <button type="button" className="btn btn-secondary btn-lg btn-block free-start" onClick={() => start(null)}>
-        <Icon name="plus" size={18} /> 루틴 없이 자유 운동
-      </button>
-      {!next && !state.active && (
-        <button type="button" className={`place-chip${away ? ' is-away' : ''}`} onClick={() => setPlaceOpen(true)} aria-label={`장소: ${place?.name ?? '평소 헬스장'}`}>
-          <Icon name="pin" size={14} />
-          {place?.name ?? '평소 헬스장'}
-          <Icon name="chevronDown" size={14} />
-        </button>
+      {!state.active && (
+        <div className="home-secondary">
+          <button type="button" className="btn btn-ghost" onClick={() => start(null)}>
+            <Icon name="plus" size={16} /> 루틴 없이 자유 운동
+          </button>
+          {!next && placeChip}
+        </div>
       )}
-      {placeOpen && <PlaceSheet routine={next} onClose={() => setPlaceOpen(false)} />}
 
       {latest && (
         <>
@@ -220,7 +220,7 @@ export function Home({ onOpenWorkout, onOpenSettings, onGoRoutines, onGoBody }: 
           <div className="card recent-card">
             <div className="row-between">
               <span className="t-headline">{latest.routineName}</span>
-              <span className="t-caption c-3">{relativeDay(latest.startedAt, now)}</span>
+              <span className="t-caption c-2">{relativeDay(latest.startedAt, now)}</span>
             </div>
             <div className="mini-stats">
               <span>
@@ -239,6 +239,7 @@ export function Home({ onOpenWorkout, onOpenSettings, onGoRoutines, onGoBody }: 
           </div>
         </>
       )}
+      {placeOpen && <PlaceSheet routine={next} initialMode={placeOpen} onClose={() => setPlaceOpen(null)} />}
     </section>
   );
 }

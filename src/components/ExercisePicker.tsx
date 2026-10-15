@@ -3,7 +3,7 @@ import { BODY_PARTS, EXERCISES, findExercise, type BodyPart } from '../data/exer
 import { uid } from '../lib/id';
 import { isAvailable } from '../lib/places';
 import { useStore } from '../lib/store';
-import type { ExerciseKind, Place, SessionPlace } from '../lib/types';
+import type { ExerciseKind, Place, SessionPlace, SwapReason } from '../lib/types';
 import { rankSubstitutes } from '../lib/substitutes';
 import { Icon } from './Icon';
 import { PartBadge } from './PartBadge';
@@ -41,6 +41,14 @@ function matches(item: Item, q: string): boolean {
   return /^[ㄱ-ㅎ]+$/.test(query) && chosung(name).includes(query);
 }
 
+export interface PickMeta {
+  reason?: SwapReason;
+  /** 기구 없음: 이 장소에서는 항상 이 종목으로 */
+  remember?: boolean;
+}
+
+const REASON_LABEL: Record<Exclude<SwapReason, 'place'>, string> = { busy: '사용 중', missing: '기구 없음', prefer: '다른 운동' };
+
 interface Props {
   /** add: 여러 개 추가, replace: 남은 계획을 바꿀 종목, relabel: 잘못 고른 종목 정정 */
   mode: 'add' | 'replace' | 'relabel';
@@ -50,23 +58,32 @@ interface Props {
   note?: string;
   /** 지금 장소. 없는 기구 종목은 추천에서 빼고 목록에 표시한다 */
   place?: Place | SessionPlace;
-  onPick: (picked: PickedExercise[]) => void;
+  /** replace: 처음 골라 둘 사유 (선택) */
+  initialReason?: SwapReason;
+  /** replace: 기구 없음일 때 "이 장소에서는 항상"을 고를 수 있는 장소 이름 */
+  rememberPlaceName?: string;
+  onPick: (picked: PickedExercise[], meta?: PickMeta) => void;
   onClose: () => void;
 }
 
-const TITLE = { add: '운동 추가', replace: '다른 종목으로 바꾸기', relabel: '실제로 한 종목 고르기' } as const;
+const TITLE = { add: '운동 추가', replace: '운동 변경', relabel: '실제로 한 종목 고르기' } as const;
 
-export function ExercisePicker({ mode, current, note, place, onPick, onClose }: Props) {
+export function ExercisePicker({ mode, current, note, place, initialReason, rememberPlaceName, onPick, onClose }: Props) {
   const { state, dispatch } = useStore();
   const currentInfo = findExercise(current?.exerciseId ?? current?.name);
   const [query, setQuery] = useState('');
   const [part, setPart] = useState<BodyPart | '최근' | '전체'>('전체');
+  const [reason, setReason] = useState<SwapReason | undefined>(initialReason);
+  const [remember, setRemember] = useState(false);
+  // 교체는 추천 3~5개에 집중하고, 전체 목록은 "다른 운동 찾기"를 눌렀을 때 연다
+  const [showAll, setShowAll] = useState(mode !== 'replace');
   const suggestions = useMemo(
-    () => (mode === 'replace' && current ? rankSubstitutes(current, state.history, { place }) : []),
-    [mode, current, state.history, place],
+    () => (mode === 'replace' && current ? rankSubstitutes(current, state.history, { place, limit: 5, avoidSameEquipment: reason === 'busy' }) : []),
+    [mode, current, state.history, place, reason],
   );
   const [selected, setSelected] = useState<Item[]>([]);
   const [creating, setCreating] = useState(false);
+  const meta = (): PickMeta | undefined => (mode === 'replace' ? { reason, remember: reason === 'missing' && remember } : undefined);
 
   const all: Item[] = useMemo(
     () => [
@@ -91,7 +108,7 @@ export function ExercisePicker({ mode, current, note, place, onPick, onClose }: 
 
   const toggle = (item: Item) => {
     if (mode !== 'add') {
-      onPick([item]);
+      onPick([item], meta());
       return;
     }
     setSelected((s) => (s.some((x) => x.exerciseId === item.exerciseId) ? s.filter((x) => x.exerciseId !== item.exerciseId) : [...s, item]));
@@ -112,51 +129,83 @@ export function ExercisePicker({ mode, current, note, place, onPick, onClose }: 
         ) : undefined
       }
     >
-      <div className="picker-search">
-        <Icon name="search" size={18} />
-        <input
-          className="picker-input"
-          type="search"
-          placeholder="종목 검색 (초성도 돼요: ㅂㅊ)"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          aria-label="종목 검색"
-        />
-      </div>
-      <div className="chip-scroll" role="tablist" aria-label="부위">
-        {filters.map((p) => (
-          <button key={p} type="button" role="tab" aria-selected={part === p} className={`chip${part === p ? ' is-on' : ''}`} onClick={() => setPart(p)}>
-            {p}
-          </button>
-        ))}
-      </div>
       {note && <p className="t-caption c-2 picker-hint">{note}</p>}
 
-      {suggestions.length > 0 && !query && part === '전체' && (
+      {mode === 'replace' && (
+        <div className="reason-row" role="group" aria-label="변경 사유">
+          <span className="t-caption c-2">사유 (선택)</span>
+          {(Object.keys(REASON_LABEL) as Exclude<SwapReason, 'place'>[]).map((r) => (
+            <button key={r} type="button" className={`chip${reason === r ? ' is-on' : ''}`} aria-pressed={reason === r} onClick={() => setReason(reason === r ? undefined : r)}>
+              {REASON_LABEL[r]}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {mode === 'replace' && reason === 'missing' && rememberPlaceName && (
+        <label className="group-row toggle-row">
+          <span className="group-row-main">
+            <span>{rememberPlaceName}에서는 항상 이 종목으로</span>
+            <span className="t-caption c-2">설정 → 장소에서 되돌릴 수 있어요</span>
+          </span>
+          <span className="switch">
+            <input type="checkbox" role="switch" aria-label="이 장소에서는 항상" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+            <span />
+          </span>
+        </label>
+      )}
+
+      {mode === 'replace' && !showAll && (
         <section aria-label="추천 대체 운동">
-          <h3 className="picker-section">'{currentInfo?.name}' 대신 추천</h3>
-          <ul className="sub-cards">
-            {suggestions.map((sub) => (
-              <li key={sub.info.id}>
-                <button
-                  type="button"
-                  className="sub-card"
-                  onClick={() => onPick([{ exerciseId: sub.info.id, name: sub.info.name, kind: sub.info.kind }])}
-                >
-                  <span className={`sub-match m${sub.match}`}>{sub.reason}</span>
-                  <span className="sub-name">{sub.info.name}</span>
-                  <span className="t-caption c-3">
-                    {sub.info.part} · {sub.info.equipment}
-                  </span>
-                  <span className="t-caption c-2">{sub.lastText ? `지난번 ${sub.lastText}` : '처음 해요'}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-          <h3 className="picker-section">전체 종목</h3>
+          <h3 className="picker-section">'{currentInfo?.name}' 대신</h3>
+          {suggestions.length === 0 ? (
+            <p className="empty-note">여기 있는 장비로 할 수 있는 같은 역할의 운동이 없어요. 맨몸 운동이나 전체 검색에서 골라요.</p>
+          ) : (
+            <ul className="sub-cards">
+              {suggestions.map((sub) => (
+                <li key={sub.info.id}>
+                  <button type="button" className="sub-card" onClick={() => onPick([{ exerciseId: sub.info.id, name: sub.info.name, kind: sub.info.kind }], meta())}>
+                    <span className="sub-name">{sub.info.name}</span>
+                    <span className="t-caption c-2">
+                      {sub.info.equipment} · {sub.reason}
+                    </span>
+                    <span className="t-caption c-2">{sub.lastText ? `지난번 ${sub.lastText}` : '처음 해요'}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button type="button" className="btn btn-secondary btn-block" onClick={() => setShowAll(true)}>
+            <Icon name="search" size={18} /> 다른 운동 찾기
+          </button>
         </section>
       )}
 
+      {showAll && (
+        <>
+          <div className="picker-search">
+            <Icon name="search" size={18} />
+            <input
+              className="picker-input"
+              type="search"
+              placeholder="종목 검색 (초성도 돼요: ㅂㅊ)"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="종목 검색"
+              autoFocus={mode === 'replace'}
+            />
+          </div>
+          <div className="chip-scroll" role="tablist" aria-label="부위">
+            {filters.map((p) => (
+              <button key={p} type="button" role="tab" aria-selected={part === p} className={`chip${part === p ? ' is-on' : ''}`} onClick={() => setPart(p)}>
+                {p}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {showAll && (
       <ul className="picker-list">
         {list.map((item) => {
           const on = selected.some((s) => s.exerciseId === item.exerciseId);
@@ -179,8 +228,9 @@ export function ExercisePicker({ mode, current, note, place, onPick, onClose }: 
         })}
         {list.length === 0 && <li className="empty-note">찾는 종목이 없어요. 아래에서 직접 추가할 수 있어요.</li>}
       </ul>
+      )}
 
-      {creating ? (
+      {!showAll ? null : creating ? (
         <CustomForm
           initialName={query}
           onCancel={() => setCreating(false)}
@@ -188,7 +238,7 @@ export function ExercisePicker({ mode, current, note, place, onPick, onClose }: 
             dispatch({ type: 'custom/add', exercise: c });
             setCreating(false);
             const item: Item = { exerciseId: c.id, name: c.name, kind: c.kind, part: c.part, equipment: '직접 추가', en: '' };
-            if (mode !== 'add') onPick([item]);
+            if (mode !== 'add') onPick([item], meta());
             else setSelected((s) => [...s, item]);
           }}
         />

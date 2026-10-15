@@ -45,11 +45,12 @@ export function RestBar({ a, now, onExpand }: { a: ActiveSession; now: number; o
 
   if (!a.rest) return null;
   const remaining = a.rest.endsAt - now;
+  const next = nextSetText(a);
   return (
     <div className={`rest-bar${remaining <= 3000 ? ' is-ending' : ''}`} role="timer" aria-label="휴식 타이머">
       <div className="rest-bar-progress" style={{ transform: `scaleX(${ratio(remaining, a.rest.totalSec)})` }} />
       <button type="button" className="rest-bar-main" onClick={onExpand} aria-label="휴식 타이머 크게 보기">
-        <span className="t-caption">휴식</span>
+        <span className="t-caption">{next ? `다음 · ${next}` : '휴식'}</span>
         <span className="rest-bar-time num">{formatCountdown(remaining)}</span>
       </button>
       <button type="button" className="btn btn-sm btn-pill rest-pill" onClick={() => dispatch({ type: 'rest/adjust', deltaSec: -15, now: Date.now() })}>

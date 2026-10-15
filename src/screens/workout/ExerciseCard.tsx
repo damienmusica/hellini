@@ -1,8 +1,7 @@
 import { findExercise, weightBasis } from '../../data/exercises';
 import { Icon } from '../../components/Icon';
-import { PartBadge } from '../../components/PartBadge';
 import { formatRepRange } from '../../lib/progression';
-import { trimKg } from '../../lib/stats';
+import { formatSet, trimKg } from '../../lib/stats';
 import { formatSeconds } from '../../lib/timer';
 import type { Effort, ExerciseLog, SetLog, SetType, WorkTimer } from '../../lib/types';
 
@@ -45,6 +44,11 @@ function prevText(kind: ExerciseLog['kind'], s: SetLog | undefined): string {
   return s.weightKg > 0 ? `${trimKg(s.weightKg)} × ${s.reps}` : `${s.reps}회`;
 }
 
+/** 처음 하는 종목(지난 기록이 없음): 적힌 무게는 시작 예시 */
+export function isFirstTime(ex: ExerciseLog, last: ExerciseLog | undefined): boolean {
+  return !last && ex.kind === 'reps' && ex.sets.some((s) => s.weightKg > 0) && !ex.sets.some((s) => s.done);
+}
+
 interface Props {
   ex: ExerciseLog;
   exIdx: number;
@@ -54,10 +58,13 @@ interface Props {
   work: WorkTimer | null;
   /** 지금 할 세트가 이 종목에 있으면 그 위치 */
   currentSetIdx: number | null;
+  /** 펼친 상태. 접히면 한 줄 요약만 보인다 */
+  expanded: boolean;
   /** 이전 기록이 다른 장소에서 한 것이면 그 장소 이름 */
   lastPlaceName?: string;
   /** 지금 장소에 기구가 없는 종목 */
   unavailable?: boolean;
+  onToggleExpand: () => void;
   onEdit: (e: Editing) => void;
   onCopyPrev: (setIdx: number, prev: SetLog) => void;
   onToggle: (setIdx: number) => void;
@@ -68,54 +75,78 @@ interface Props {
   onMenu: () => void;
   onTip: () => void;
   onRest: () => void;
+  onSwap: () => void;
   onApplySuggestion: () => void;
   onDismissSuggestion: () => void;
   onEffort: (effort: Effort) => void;
-  onSwap: () => void;
 }
 
+/**
+ * 운동 중 종목 카드. 현재 종목은 펼쳐서 세트 표를 보여주고, 나머지는 한 줄 요약으로 접는다.
+ * 설명은 도움말 버튼 뒤로 두고, 숫자는 크게.
+ */
 export function ExerciseCard(p: Props) {
   const { ex, exIdx, last, editing } = p;
   const info = findExercise(ex.exerciseId ?? ex.name);
   const labels = setLabels(ex.sets);
   const isTime = ex.kind === 'time';
-  const firstTime = !last && !isTime && ex.sets.some((s) => s.weightKg > 0) && !ex.sets.some((s) => s.done);
+  const firstTime = isFirstTime(ex, last);
   const isActive = (setIdx: number, field: Field) =>
     editing?.exIdx === exIdx && editing.setIdx === setIdx && editing.field === field;
   const started = ex.sets.some((s) => s.done && s.type === 'normal');
   const suggestion = ex.suggested && !ex.suggested.applied && !ex.suggested.dismissed && !started ? ex.suggested : null;
   const workSets = ex.sets.filter((s) => s.type !== 'warmup');
-  const allDone = workSets.length > 0 && workSets.every((s) => s.done);
+  const doneCount = workSets.filter((s) => s.done).length;
+  const allDone = workSets.length > 0 && doneCount === workSets.length;
   const firstNormal = ex.sets.find((s) => s.type === 'normal');
   const pending = ex.sets.some((s) => !s.done);
+
+  if (!p.expanded) {
+    const plan = firstNormal ?? ex.sets[0];
+    return (
+      <article className="ex-card is-collapsed" aria-label={ex.name}>
+        <button type="button" className={`ex-summary${allDone ? ' is-done' : ''}`} onClick={p.onToggleExpand} aria-expanded={false}>
+          <span className="ex-summary-main">
+            <span className="ex-name">{ex.name}</span>
+            <span className="ex-summary-sets">
+              {workSets.length}세트{plan ? ` · ${formatSet(ex.kind, plan)}` : ''}
+              {p.unavailable && pending ? ' · 여기 없는 기구' : ''}
+            </span>
+          </span>
+          <span className={`ex-progress${allDone ? ' is-done' : ''}`}>
+            {allDone ? <Icon name="check" size={16} strokeWidth={3} /> : null}
+            {doneCount}/{workSets.length}
+          </span>
+          <Icon name="chevronDown" size={18} className="c-3" />
+        </button>
+      </article>
+    );
+  }
 
   return (
     <article className="ex-card" aria-label={ex.name}>
       <header className="ex-head">
-        <PartBadge exerciseId={ex.exerciseId} name={ex.name} part={info?.part} />
-        <button type="button" className="ex-title" onClick={p.onTip}>
+        <button type="button" className="ex-title" onClick={p.onToggleExpand} aria-expanded={true}>
           <span className="ex-name">{ex.name}</span>
-          <span className="t-caption c-3">
-            {info ? `${info.part} · ${info.equipment}${isTime ? '' : ` · ${weightBasis(info.equipment)}`}` : '직접 추가한 종목'}
-            {!isTime && firstNormal && ` · 목표 ${formatRepRange(firstNormal.reps)}`}
+          <span className="t-caption c-2">
+            {!isTime && firstNormal ? `목표 ${formatRepRange(firstNormal.reps)}` : ''}
+            {info && !isTime ? ` · ${weightBasis(info.equipment)}` : info ? info.equipment : '직접 추가한 종목'}
           </span>
         </button>
+        {info && (
+          <button type="button" className="icon-btn is-plain" aria-label={`${ex.name} 자세 도움말`} onClick={p.onTip}>
+            <Icon name="info" size={20} />
+          </button>
+        )}
         <button type="button" className="icon-btn is-plain" aria-label={`${ex.name} 메뉴`} onClick={p.onMenu}>
           <Icon name="more" size={22} strokeWidth={3} />
         </button>
       </header>
 
-      {info && (
-        <button type="button" className="ex-tip" onClick={p.onTip}>
-          <Icon name="info" size={15} />
-          <span>{info.tip}</span>
-        </button>
-      )}
-
       {ex.swap && (
         <p className="ex-swap">
           <Icon name="swap" size={14} /> {ex.swap.from} 대신 ·{' '}
-          {ex.swap.reason === 'place' ? '이 장소 설정' : ex.swap.reason === 'missing' ? '기구 없음' : ex.swap.reason === 'busy' ? '기구 사용 중' : '오늘만'}
+          {ex.swap.reason === 'place' ? '이 장소 설정' : ex.swap.reason === 'missing' ? '기구 없음' : ex.swap.reason === 'busy' ? '사용 중' : '오늘만'}
         </p>
       )}
 
@@ -129,10 +160,7 @@ export function ExerciseCard(p: Props) {
         </div>
       )}
 
-      {firstTime && <p className="ex-first">처음 하는 종목이에요. 적힌 무게는 시작 예시라서, 자세가 편한 무게로 바꿔 주세요.</p>}
-      {!firstTime && p.lastPlaceName && !started && (
-        <p className="ex-first">'이전' 칸은 {p.lastPlaceName}에서 한 기록이에요. 여기 기구는 다를 수 있으니 참고만 하세요.</p>
-      )}
+      {!firstTime && p.lastPlaceName && !started && <p className="ex-first">'이전'은 {p.lastPlaceName} 기록이에요. 기구가 다를 수 있어요.</p>}
 
       {ex.note && <p className="ex-note">{ex.note}</p>}
 
@@ -150,11 +178,6 @@ export function ExerciseCard(p: Props) {
           </button>
         </div>
       )}
-
-      <button type="button" className="rest-chip" onClick={p.onRest}>
-        <Icon name="timer" size={15} />
-        휴식 {ex.restSec > 0 ? formatSeconds(ex.restSec) : '끔'}
-      </button>
 
       <div className={`set-table${isTime ? ' is-time' : ''}`} role="table" aria-label={`${ex.name} 세트`}>
         <div className="set-row set-head" role="row">
@@ -177,12 +200,13 @@ export function ExerciseCard(p: Props) {
           const prev = previousFor(last, ex.sets, i);
           const running = p.work?.exIdx === exIdx && p.work.setIdx === i;
           const name = `${ex.name} ${labels[i]}세트`;
+          const current = p.currentSetIdx === i;
           return (
             <div
               key={i}
               role="row"
-              aria-current={p.currentSetIdx === i ? 'step' : undefined}
-              className={`set-row${s.done ? ' is-done' : ''}${running ? ' is-running' : ''}${p.currentSetIdx === i ? ' is-current' : ''}`}
+              aria-current={current ? 'step' : undefined}
+              className={`set-row${s.done ? ' is-done' : ''}${running ? ' is-running' : ''}${current ? ' is-current' : ''}`}
             >
               <button
                 type="button"
@@ -213,14 +237,21 @@ export function ExerciseCard(p: Props) {
                 </button>
               ) : (
                 <>
-                  <button
-                    type="button"
-                    className={`set-cell num${isActive(i, 'weightKg') ? ' is-editing' : ''}`}
-                    aria-label={`${name} 무게 ${trimKg(s.weightKg)}kg`}
-                    onClick={() => p.onEdit({ exIdx, setIdx: i, field: 'weightKg' })}
-                  >
-                    {trimKg(s.weightKg)}
-                  </button>
+                  <span className="set-cell-wrap">
+                    <button
+                      type="button"
+                      className={`set-cell num${isActive(i, 'weightKg') ? ' is-editing' : ''}`}
+                      aria-label={`${name} 무게 ${trimKg(s.weightKg)}kg${firstTime && !s.done ? ' (시작값)' : ''}`}
+                      onClick={() => p.onEdit({ exIdx, setIdx: i, field: 'weightKg' })}
+                    >
+                      {trimKg(s.weightKg)}
+                    </button>
+                    {firstTime && !s.done && (
+                      <span className="start-tag" aria-hidden="true">
+                        시작값
+                      </span>
+                    )}
+                  </span>
                   <button
                     type="button"
                     className={`set-cell num${isActive(i, 'reps') ? ' is-editing' : ''}`}
@@ -238,7 +269,7 @@ export function ExerciseCard(p: Props) {
                   aria-label={running ? `${name} 타이머 멈추기` : `${name} 타이머 시작`}
                   onClick={() => (running ? p.onStopWork() : p.onStartWork(i))}
                 >
-                  <Icon name={running ? 'pause' : 'play'} size={16} strokeWidth={2.6} />
+                  <Icon name={running ? 'pause' : 'play'} size={18} strokeWidth={2.6} />
                 </button>
               ) : (
                 <button
@@ -248,7 +279,7 @@ export function ExerciseCard(p: Props) {
                   aria-pressed={s.done}
                   onClick={() => p.onToggle(i)}
                 >
-                  <Icon name="check" size={18} strokeWidth={3} />
+                  <Icon name="check" size={20} strokeWidth={3} />
                 </button>
               )}
             </div>
@@ -256,9 +287,21 @@ export function ExerciseCard(p: Props) {
         })}
       </div>
 
-      <button type="button" className="btn btn-secondary btn-sm btn-block add-set" onClick={p.onAddSet}>
-        <Icon name="plus" size={16} /> 세트 추가
-      </button>
+      <div className="ex-actions">
+        <button type="button" className="rest-chip" onClick={p.onRest}>
+          <Icon name="timer" size={16} />
+          휴식 {ex.restSec > 0 ? formatSeconds(ex.restSec) : '끔'}
+        </button>
+        {pending && (
+          <button type="button" className="rest-chip" onClick={p.onSwap}>
+            <Icon name="swap" size={16} />
+            바꾸기
+          </button>
+        )}
+        <button type="button" className="rest-chip" onClick={p.onAddSet}>
+          <Icon name="plus" size={16} /> 세트
+        </button>
+      </div>
 
       {allDone && (
         <div className="effort" role="group" aria-label={`${ex.name} 마지막 세트 체감`}>

@@ -306,7 +306,7 @@ function SessionSheet({ session, onClose }: { session: Session; onClose: () => v
                     <span className="t-caption c-3">{e.sets.length}세트</span>
                   </span>
                   <button type="button" className="btn btn-sm btn-ghost" onClick={() => setRelabel(exIdx)}>
-                    종목 정정
+                    완료 기록 정정
                   </button>
                 </header>
                 <div className={`set-table plan${isTime ? ' is-time' : ''}`} role="table" aria-label={`${e.name} 세트`}>

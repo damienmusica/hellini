@@ -15,8 +15,8 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);
-  font-size: 15px;
-  line-height: 1.47;
+  font-size: 16px;
+  line-height: 1.45;
   font-weight: 500;
   letter-spacing: -0.01em;
 }
@@ -116,16 +116,40 @@ button:disabled {
 }
 
 .t-caption {
-  font-size: 13px;
-  line-height: 18px;
+  font-size: 14px;
+  line-height: 20px;
   font-weight: 500;
 }
 
 .t-overline {
-  font-size: 11px;
-  line-height: 14px;
+  font-size: 13px;
+  line-height: 18px;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
+}
+
+/* 수행 숫자: 현재 값 24~28, 타이머 32~40. 단위는 작고 연하게 */
+.t-value {
+  font-size: 26px;
+  line-height: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.t-timer {
+  font-size: 36px;
+  line-height: 40px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.unit {
+  font-size: 0.55em;
+  font-weight: 600;
+  color: var(--text-2);
+  margin-left: 2px;
 }
 
 .c-2 {

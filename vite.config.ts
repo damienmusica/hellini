@@ -10,6 +10,8 @@ export default defineConfig({
   base,
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
+    // 화면 버전만으로는 빌드를 구별하기 어려워서 커밋 식별자도 같이 보여준다 (Actions는 GITHUB_SHA를 준다)
+    __BUILD_ID__: JSON.stringify((process.env.GITHUB_SHA ?? process.env.BUILD_ID ?? 'dev').slice(0, 7)),
   },
   plugins: [
     react(),

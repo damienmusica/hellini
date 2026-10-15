@@ -11,7 +11,7 @@
   border-radius: var(--r-control);
   background: var(--surface-2);
   color: var(--text);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   white-space: nowrap;
   transition:
@@ -58,14 +58,14 @@
 
 .btn-lg {
   min-height: 52px;
-  font-size: 16px;
-  border-radius: 14px;
+  font-size: 17px;
+  border-radius: 12px;
 }
 
 .btn-sm {
-  min-height: 34px;
-  padding: 0 12px;
-  font-size: 14px;
+  min-height: 40px;
+  padding: 0 14px;
+  font-size: 15px;
 }
 
 .btn-pill {
@@ -88,8 +88,8 @@
 .icon-btn {
   display: inline-grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border: none;
   border-radius: var(--r-pill);
   background: var(--surface-2);
@@ -109,6 +109,7 @@
 
 .card {
   background: var(--surface);
+  border: 1px solid var(--hairline);
   border-radius: var(--r-card);
   box-shadow: var(--shadow-card);
   padding: 16px;
@@ -116,6 +117,7 @@
 
 .group {
   background: var(--surface);
+  border: 1px solid var(--hairline);
   border-radius: var(--r-card);
   box-shadow: var(--shadow-card);
   overflow: hidden;
@@ -170,13 +172,13 @@ button.group-row:active {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  min-height: 34px;
+  min-height: 40px;
   padding: 0 14px;
   border: none;
   border-radius: var(--r-pill);
   background: var(--surface-2);
   color: var(--text-2);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   white-space: nowrap;
   flex-shrink: 0;
@@ -204,18 +206,18 @@ button.group-row:active {
   display: flex;
   padding: 3px;
   gap: 2px;
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--surface-2);
 }
 
 .segmented button {
   flex: 1;
-  min-height: 34px;
+  min-height: 40px;
   border: none;
-  border-radius: 9px;
+  border-radius: 8px;
   background: transparent;
   color: var(--text-2);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
 }
 
@@ -230,10 +232,10 @@ button.group-row:active {
   place-items: center;
   width: 40px;
   height: 40px;
-  border-radius: 12px;
-  background: var(--accent-soft);
-  color: var(--accent-text);
-  font-size: 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 13px;
   font-weight: 700;
   letter-spacing: -0.03em;
   flex-shrink: 0;
@@ -249,9 +251,9 @@ button.group-row:active {
 
 .text-input {
   width: 100%;
-  min-height: 46px;
+  min-height: 48px;
   padding: 0 14px;
-  border: 1px solid transparent;
+  border: 1px solid var(--hairline);
   border-radius: var(--r-control);
   background: var(--surface-2);
   font-size: 16px;
@@ -460,7 +462,7 @@ button.group-row:active {
   width: 100%;
   max-width: 420px;
   padding: 12px 16px;
-  border-radius: 18px;
+  border-radius: 14px;
   background: var(--surface);
   box-shadow: var(--shadow-float);
   animation: toast-in 0.45s var(--ease-spring);
@@ -493,7 +495,7 @@ button.group-row:active {
 
 .toast-body {
   color: var(--text-2);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 @keyframes toast-in {
@@ -532,12 +534,12 @@ button.group-row:active {
 }
 
 .keypad-value {
-  font-size: 22px;
+  font-size: 26px;
   font-weight: 700;
 }
 
 .keypad-value small {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-3);
   margin-left: 2px;
 }
@@ -554,7 +556,7 @@ button.group-row:active {
 }
 
 .key {
-  min-height: 50px;
+  min-height: 52px;
   border: none;
   border-radius: 12px;
   background: var(--surface-2);
@@ -632,7 +634,7 @@ button.group-row:active {
 }
 
 .mm-label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   fill: var(--text-3);
 }
@@ -738,7 +740,7 @@ button.group-row:active {
 
 .picker-section {
   margin: 4px 4px 8px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   color: var(--text-2);
 }
@@ -758,8 +760,8 @@ button.group-row:active {
 }
 
 .sub-cards li {
-  flex: 0 0 72%;
-  max-width: 260px;
+  flex: 0 0 62%;
+  max-width: 240px;
   scroll-snap-align: start;
 }
 
@@ -771,9 +773,9 @@ button.group-row:active {
   align-items: flex-start;
   gap: 4px;
   padding: 14px;
-  border: 2px solid transparent;
-  border-radius: 16px;
-  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--surface);
   text-align: left;
 }
 
@@ -789,7 +791,7 @@ button.group-row:active {
 .sub-match {
   padding: 2px 8px;
   border-radius: var(--r-badge);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   background: var(--surface-3);
   color: var(--text-2);
@@ -803,4 +805,106 @@ button.group-row:active {
 .sub-match.m2 {
   background: var(--success-soft);
   color: var(--success-text);
+}
+
+/* ---------- toast action ---------- */
+
+.toast.has-action {
+  pointer-events: auto;
+}
+
+.toast-text {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ---------- 변경 시트 ---------- */
+
+.reason-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.reason-row .t-caption {
+  margin-right: 2px;
+}
+
+.sub-cards li {
+  flex: 0 0 62%;
+  max-width: 240px;
+}
+
+/* ---------- 장소 프리셋 · 시작 전 조정 ---------- */
+
+.preset-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.preset-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 64px;
+  padding: 10px 12px;
+  border: 2px solid var(--hairline);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  text-align: left;
+}
+
+.preset-chip.is-on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.preset-chip .t-headline {
+  font-size: 16px;
+}
+
+.review-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.review-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    'from from'
+    'arrow arrow'
+    'to actions';
+  gap: 4px 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-card);
+}
+
+.review-from {
+  grid-area: from;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.review-row > svg {
+  grid-area: arrow;
+}
+
+.review-to {
+  grid-area: to;
+  display: flex;
+  flex-direction: column;
+}
+
+.review-actions {
+  grid-area: actions;
+  display: flex;
+  gap: 4px;
+  align-items: center;
 }

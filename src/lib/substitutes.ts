@@ -1,4 +1,4 @@
-import { EXERCISES, findExercise, NEAR_ROLES, ROLE_LABEL, roleOf, type ExerciseInfo } from '../data/exercises';
+import { EXERCISES, findExercise, NEAR_ROLES, requiresOf, ROLE_LABEL, roleOf, type ExerciseInfo } from '../data/exercises';
 import { isAvailable, placeKey } from './places';
 import { bestSet, formatSet, lastLogFor } from './stats';
 import type { Place, Session, SessionPlace } from './types';
@@ -20,7 +20,7 @@ export interface Substitute {
 export function rankSubstitutes(
   current: { exerciseId?: string; name: string },
   history: Session[],
-  opts: { place?: Place | SessionPlace; limit?: number } = {},
+  opts: { place?: Place | SessionPlace; limit?: number; /** 기구 사용 중: 같은 장비·같은 보조 장비를 쓰는 후보는 뒤로 */ avoidSameEquipment?: boolean } = {},
 ): Substitute[] {
   const cur = findExercise(current.exerciseId ?? current.name);
   if (!cur) return [];
@@ -36,10 +36,12 @@ export function rankSubstitutes(
       const match: 0 | 1 | 2 | 3 = r && r === role ? 3 : r && near.has(r) ? 2 : info.part === cur.part ? 1 : 0;
       const last = lastLogFor(history, { exerciseId: info.id, name: info.name }, here);
       const best = last ? bestSet(last) : undefined;
-      return { info, match, order, last, best };
+      // 사용 중이면 같은 장비(랙·바벨 등)를 요구하는 후보는 뒤로 보낸다
+      const sameRig = opts.avoidSameEquipment && (info.equipment === cur.equipment || requiresOf(info.id).some((f) => requiresOf(cur.id).includes(f)));
+      return { info, match, order, last, best, sameRig: sameRig ? 1 : 0 };
     })
     .filter((x) => x.match > 0)
-    .sort((a, b) => b.match - a.match || Number(!!b.last) - Number(!!a.last) || a.order - b.order);
+    .sort((a, b) => a.sameRig - b.sameRig || b.match - a.match || Number(!!b.last) - Number(!!a.last) || a.order - b.order);
 
   return scored.slice(0, limit).map(({ info, match, best }) => {
     const r = roleOf(info.id);

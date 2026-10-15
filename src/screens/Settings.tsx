@@ -230,7 +230,7 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
           if (file) void importData(file);
         }}
       />
-      <p className="t-caption c-3 center">헬린이 v{__APP_VERSION__}</p>
+      <p className="t-caption c-3 center">헬린이 v{__APP_VERSION__} · 빌드 {__BUILD_ID__}</p>
     </Sheet>
   );
 }

@@ -21,7 +21,7 @@ test.beforeEach(async ({ page }) => {
 
 test('온보딩 답에 맞는 프로그램을 추천하고 오늘의 루틴을 보여준다', async ({ page }) => {
   await onboard(page);
-  await expect(page.getByText('오늘의 루틴')).toBeVisible();
+  await expect(page.getByText(/^오늘/)).toBeVisible();
   await expect(page.getByRole('heading', { name: '무분할 A' })).toBeVisible();
   await expect(page.getByText('0/3회')).toBeVisible();
 });
@@ -98,6 +98,8 @@ test('지난 기록보다 무거우면 PR 알림, 다음엔 증량을 제안한�
 test('시간 세트(플랭크)는 타이머가 끝나면 자동 완료된다', async ({ page }) => {
   await onboard(page);
   await page.getByRole('button', { name: '운동 시작' }).click();
+  // 현재 종목이 아닌 카드는 접혀 있다
+  await page.getByRole('article', { name: '플랭크' }).getByRole('button', { expanded: false }).click();
   await page.getByRole('button', { name: '플랭크 1세트 타이머 시작' }).click();
   const work = page.getByRole('timer', { name: '운동 타이머' });
   await expect(work).toContainText('0:30');
@@ -150,10 +152,11 @@ test('P0: 스쿼트 1세트 후 레그 프레스로 바꿔도 완료 세트는 �
 
   await squat.getByRole('button', { name: '스쿼트 메뉴' }).click();
   await page.getByRole('button', { name: '남은 세트만 다른 종목으로' }).click();
-  await page.getByRole('button', { name: '다른 운동이 하고 싶어요' }).click();
-  await expect(page.getByText('완료한 1세트는 스쿼트 기록으로 남고')).toBeVisible();
+  await expect(page.getByText('완료한 1세트는 유지 · 오늘만')).toBeVisible();
   await page.getByRole('region', { name: '추천 대체 운동' }).getByRole('button', { name: /레그 프레스/ }).click();
 
+  // 완료한 스쿼트는 요약으로 접힌다. 펼쳐서 확인
+  await squat.getByRole('button', { expanded: false }).click();
   await expect(squat.getByRole('button', { name: '스쿼트 1세트 완료 취소' })).toBeVisible();
   await expect(squat.getByRole('button', { name: /스쿼트 2세트/ })).toHaveCount(0);
   const press = page.getByRole('article', { name: '레그 프레스' });
@@ -204,26 +207,27 @@ test('P1: 끝난 기록의 무게를 고치면 상세와 통계에 반영된다'
   await expect(page.getByText('최고 30kg')).toBeVisible();
 });
 
-test('호텔 짐: 등록 없이 장비만 고르고, 없는 기구 종목을 바꾸고, 끝나면 평소 헬스장과 기본 루틴은 그대로', async ({ page }) => {
+test('호텔 짐: 장비 프리셋 → 시작 전 조정 검토 → 끝나면 평소 헬스장과 기본 루틴은 그대로', async ({ page }) => {
   await onboard(page);
   await page.getByRole('button', { name: '장소: 평소 헬스장' }).click();
   await page.getByRole('button', { name: /다른 곳에서/ }).click();
-  // 기본 체크: 덤벨·머신·케이블 → 바벨 종목(스쿼트·벤치프레스)은 못 한다
-  await expect(page.getByText(/스쿼트, 벤치프레스은\(는\) 여기 기구가 없어요/)).toBeVisible();
-  await page.getByRole('button', { name: '이 장비로 할게요' }).click();
-  await expect(page.getByRole('button', { name: '장소: 다른 헬스장' })).toContainText('2종목 기구 없음');
+  // 장비는 미확인 상태에서 시작: 프리셋을 눌러 명시한다
+  await expect(page.getByText(/사용할 수 없는 운동 4개/)).toBeVisible();
+  await page.getByRole('button', { name: /덤벨 \+ 벤치/ }).click();
+  await expect(page.getByText('사용할 수 없는 운동 3개: 스쿼트, 벤치프레스, 랫풀다운')).toBeVisible();
+  await page.getByRole('button', { name: '다음 · 조정 3개 검토' }).click();
 
-  await page.getByRole('button', { name: '운동 시작' }).click();
-  await expect(page.getByText('무분할 A · 다른 헬스장')).toBeVisible();
-  const squat = page.getByRole('article', { name: '스쿼트' });
-  await expect(squat.getByText('여기엔 없는 기구예요')).toBeVisible();
-  await squat.getByRole('button', { name: '바꾸기' }).click();
-  const picks = page.getByRole('region', { name: '추천 대체 운동' });
-  await expect(picks.getByRole('button', { name: /바벨/ })).toHaveCount(0);
-  await picks.getByRole('button', { name: /레그 프레스/ }).click();
-  const legPress = page.getByRole('article', { name: '레그 프레스' });
-  await expect(legPress.getByText('스쿼트 대신 · 기구 없음')).toBeVisible();
-  await legPress.getByRole('button', { name: '레그 프레스 1세트 완료' }).click();
+  // 한 화면에서 대체안 비교: 같은 역할·있는 장비 기준
+  const review = page.getByRole('dialog', { name: '시작 전 조정' });
+  await expect(review.getByText('고블릿 스쿼트')).toBeVisible();
+  await expect(review.getByText('덤벨 벤치프레스')).toBeVisible();
+  await expect(review.getByText('원암 덤벨 로우')).toBeVisible();
+  await review.getByRole('button', { name: '3개 바꾸고 시작' }).click();
+
+  await expect(page.getByText('무분할 A · 덤벨 + 벤치')).toBeVisible();
+  const goblet = page.getByRole('article', { name: '고블릿 스쿼트' });
+  await expect(goblet.getByText('스쿼트 대신 · 기구 없음')).toBeVisible();
+  await goblet.getByRole('button', { name: '고블릿 스쿼트 1세트 완료' }).click();
   await page.getByRole('button', { name: '완료', exact: true }).click();
   // 다른 장소 기록은 기본 루틴에 반영하지 않는 게 기본
   await expect(page.getByRole('switch', { name: '종목 구성도 바꾸기' })).not.toBeChecked();
@@ -233,6 +237,22 @@ test('호텔 짐: 등록 없이 장비만 고르고, 없는 기구 종목을 바
   await expect(page.getByRole('button', { name: '장소: 평소 헬스장' })).toBeVisible();
   await page.getByRole('button', { name: '루틴', exact: true }).click();
   await expect(page.getByRole('button', { name: /무분할 A/ }).first()).toContainText('스쿼트');
+});
+
+test('운동 중 교체는 한 시트에서: 사유 칩 → 후보 카드, 되돌리기', async ({ page }) => {
+  await onboard(page);
+  await page.getByRole('button', { name: '운동 시작' }).click();
+  const squat = page.getByRole('article', { name: '스쿼트', exact: true });
+  await squat.getByRole('button', { name: '바꾸기' }).click();
+  const sheet = page.getByRole('dialog', { name: '운동 변경' });
+  await sheet.getByRole('button', { name: '사용 중' }).click();
+  // 사용 중이면 같은 랙·바벨을 쓰는 프론트 스쿼트보다 다른 기구 후보가 앞에 온다
+  const cards = sheet.getByRole('region', { name: '추천 대체 운동' }).getByRole('button');
+  await expect(cards.first()).not.toContainText('프론트 스쿼트');
+  await cards.first().click();
+  await expect(page.getByRole('article', { name: '스쿼트', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: '되돌리기' }).click();
+  await expect(page.getByRole('article', { name: '스쿼트', exact: true })).toBeVisible();
 });
 
 test('체성분을 넣으면 단계 추천과 영양 목표가 나온다', async ({ page }) => {

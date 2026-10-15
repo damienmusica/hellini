@@ -1,4 +1,4 @@
-import type { Equipment } from '../lib/types';
+import type { Equipment, Feature } from '../lib/types';
 
 /**
  * 기본 운동 종목 라이브러리.
@@ -29,7 +29,7 @@ export type Muscle =
 
 export type BodyPart = '가슴' | '등' | '어깨' | '하체' | '팔' | '복근' | '유산소' | '전신';
 
-export type { Equipment };
+export type { Equipment, Feature };
 
 export interface ExerciseInfo {
   id: string;
@@ -331,6 +331,30 @@ export function roleOf(exerciseId: string | undefined): Role | undefined {
 }
 
 /** 무게를 어떤 기준으로 적는지 (기록끼리 비교하려면 같은 기준이어야 한다) */
+/** 장비 종류 외에 꼭 있어야 하는 보조 장비. 없는 종목은 장비만 있으면 된다 */
+export const REQUIRES: Partial<Record<string, Feature[]>> = {
+  'bench-press': ['벤치', '랙'],
+  'incline-bench-press': ['인클라인 벤치', '랙'],
+  'close-grip-bench-press': ['벤치', '랙'],
+  'dumbbell-bench-press': ['벤치'],
+  'incline-dumbbell-press': ['인클라인 벤치'],
+  'dumbbell-fly': ['벤치'],
+  'skull-crusher': ['벤치'],
+  'bench-dips': ['벤치'],
+  'hip-thrust': ['벤치'],
+  'bulgarian-split-squat': ['벤치'],
+  'dumbbell-row': ['벤치'],
+  squat: ['랙'],
+  'front-squat': ['랙'],
+  'pull-up': ['풀업바'],
+  'chin-up': ['풀업바'],
+  'hanging-leg-raise': ['풀업바'],
+};
+
+export function requiresOf(exerciseId: string | undefined): Feature[] {
+  return (exerciseId && REQUIRES[exerciseId]) || [];
+}
+
 export function weightBasis(equipment: Equipment | undefined): string {
   switch (equipment) {
     case '바벨':

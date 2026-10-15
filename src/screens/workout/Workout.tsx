@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { findExercise } from '../../data/exercises';
 import { defaultSetsFor } from '../../data/programs';
 import { ExercisePicker } from '../../components/ExercisePicker';
@@ -16,16 +16,13 @@ import { doneSets, formatDuration, formatSet, formatVolume, lastLogAt, logKey, s
 import { useStore } from '../../lib/store';
 import { formatElapsed } from '../../lib/timer';
 import type { ActiveSession, SetType, SwapReason } from '../../lib/types';
-import { ExerciseCard, setLabels, SET_TYPE_LABEL, type Editing } from './ExerciseCard';
+import { ExerciseCard, isFirstTime, setLabels, SET_TYPE_LABEL, type Editing } from './ExerciseCard';
 import { RestBar, RestSheet } from './RestBar';
 import { NoteSheet, PlateSheet, RestTimeSheet, TipSheet } from './sheets';
 
 type SheetState =
   | { kind: 'add' }
-  | { kind: 'why'; exIdx: number }
-  | { kind: 'replace'; exIdx: number; reason: SwapReason }
-  /** 기구 없음으로 바꾼 뒤: 이 장소 프로필에 남길지 */
-  | { kind: 'scope'; fromId: string; fromName: string; toId: string; toName: string }
+  | { kind: 'replace'; exIdx: number; reason?: SwapReason }
   | { kind: 'relabel'; exIdx: number }
   | { kind: 'menu'; exIdx: number }
   | { kind: 'setMenu'; exIdx: number; setIdx: number }
@@ -54,9 +51,32 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
   const [editing, setEditing] = useState<Editing | null>(null);
   const [sheet, setSheet] = useState<SheetState>(null);
   const [restOpen, setRestOpen] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
+  // 사용자가 직접 펼치거나 접은 종목 (현재 종목은 기본으로 펼친다)
+  const [expandedOverride, setExpandedOverride] = useState<Map<string, boolean>>(() => new Map());
+  // 처음 하는 종목 안내는 세션에서 한 번만
+  const introKey = `hellini:intro:${a.id}`;
+  const [introDismissed, setIntroDismissed] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem(introKey) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const dismissIntro = () => {
+    setIntroDismissed(true);
+    try {
+      sessionStorage.setItem(introKey, '1');
+    } catch {
+      // 무시
+    }
+  };
 
   const here = placeKey(a);
   const place = state.places.find((p) => p.id === here);
+  // 되돌리기 판단용: 토스트가 떠 있는 동안 완료 세트가 바뀌었으면 되돌리지 않는다
+  const latest = useRef(a);
+  latest.current = a;
   const placeName = a.place?.name ?? place?.name ?? '평소 헬스장';
   const bests = useMemo(() => bestsByExercise(state.history), [state.history]);
   // 이전 기록은 같은 장소 것을 먼저, 없으면 다른 장소 것 (참고용으로 표시하고 그렇다고 알려준다)
@@ -67,6 +87,7 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
   const done = doneSets(a);
   const total = totalSets(a);
   const volume = sessionVolume(a);
+  const hasFirstTime = a.exercises.some((e, i) => isFirstTime(e, lastLogs[i]));
 
   // 지금 할 세트: 가장 최근에 완료한 세트의 다음 (없으면 처음 남은 세트)
   const current = useMemo(() => {
@@ -184,11 +205,21 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
       items.push({
         label: doneCount > 0 ? '남은 세트만 다른 종목으로' : '다른 종목으로 바꾸기',
         icon: 'swap',
-        onSelect: () => setSheet({ kind: 'why', exIdx }),
+        onSelect: () => setSheet({ kind: 'replace', exIdx }),
       });
+      if (exIdx < a.exercises.length - 1 && doneCount === 0) {
+        items.push({
+          label: '순서 뒤로 미루기 (사용 중)',
+          icon: 'arrowDown',
+          onSelect: () => {
+            dispatch({ type: 'exercise/defer', exIdx });
+            toast({ icon: 'arrowDown', title: `${ex.name}을(를) 맨 뒤로 미뤘어요` });
+          },
+        });
+      }
     }
     if (doneCount > 0) {
-      items.push({ label: '종목 정정 (한 세트 포함)', icon: 'edit', onSelect: () => setSheet({ kind: 'relabel', exIdx }) });
+      items.push({ label: '완료 기록 정정', icon: 'edit', onSelect: () => setSheet({ kind: 'relabel', exIdx }) });
       if (pendingCount > 0) {
         items.push({
           label: '오늘은 여기까지 (남은 세트 빼기)',
@@ -238,29 +269,6 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
     return items;
   };
 
-  const whyMenu = (exIdx: number): ActionItem[] => {
-    const ex = a.exercises[exIdx];
-    const canDefer = exIdx < a.exercises.length - 1 && !ex.sets.some((s) => s.done);
-    const items: ActionItem[] = [
-      { label: '기구가 없어요', icon: 'close', onSelect: () => setSheet({ kind: 'replace', exIdx, reason: 'missing' }) },
-    ];
-    if (canDefer) {
-      items.push({
-        label: '누가 쓰고 있어요 → 순서만 뒤로',
-        icon: 'arrowDown',
-        onSelect: () => {
-          dispatch({ type: 'exercise/defer', exIdx });
-          toast({ icon: 'arrowDown', title: `${ex.name}을(를) 맨 뒤로 미뤘어요` });
-        },
-      });
-    }
-    items.push(
-      { label: canDefer ? '누가 쓰고 있어요 → 다른 종목으로' : '누가 쓰고 있어요', icon: 'swap', onSelect: () => setSheet({ kind: 'replace', exIdx, reason: 'busy' }) },
-      { label: '다른 운동이 하고 싶어요', icon: 'sparkle', onSelect: () => setSheet({ kind: 'replace', exIdx, reason: 'prefer' }) },
-    );
-    return items;
-  };
-
   const editingSet = editing ? a.exercises[editing.exIdx]?.sets[editing.setIdx] : undefined;
   const editingEx = editing ? a.exercises[editing.exIdx] : undefined;
 
@@ -284,23 +292,39 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
         </button>
       </header>
 
-      <div className="workout-stats">
+      <button type="button" className="stats-toggle" aria-expanded={statsOpen} onClick={() => setStatsOpen((v) => !v)}>
+        <span>
+          세트 <span className="num">{done}/{total}</span> · 볼륨 <span className="num">{formatVolume(volume)}</span>
+        </span>
+        <Icon name={statsOpen ? 'chevronDown' : 'chevronRight'} size={16} />
+      </button>
+      <div className={`workout-stats${statsOpen ? '' : ' is-collapsed'}`}>
         <div>
-          <span className="t-overline c-3">시간</span>
+          <span className="t-overline c-2">시간</span>
           <span className="workout-stat num">{formatDuration(now - a.startedAt)}</span>
         </div>
         <div>
-          <span className="t-overline c-3">볼륨</span>
+          <span className="t-overline c-2">볼륨</span>
           <span className="workout-stat num">{formatVolume(volume)}</span>
         </div>
         <div>
-          <span className="t-overline c-3">세트</span>
+          <span className="t-overline c-2">세트</span>
           <span className="workout-stat num">
             {done}
             <small>/{total}</small>
           </span>
         </div>
       </div>
+
+      {hasFirstTime && !introDismissed && (
+        <div className="intro-note" role="note">
+          <Icon name="info" size={16} />
+          <span>처음 하는 종목은 적힌 무게가 시작 예시예요(표에 '시작값'). 자세가 편한 무게로 바꿔요.</span>
+          <button type="button" className="icon-btn is-plain" aria-label="안내 닫기" onClick={dismissIntro}>
+            <Icon name="close" size={16} />
+          </button>
+        </div>
+      )}
 
       {a.exercises.length === 0 && (
         <div className="workout-empty">
@@ -314,6 +338,8 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
         {a.exercises.map((ex, exIdx) => {
           const entry = lastEntries[exIdx];
           const lastPlaceName = entry && placeKey(entry.session) !== here ? (entry.session.place?.name ?? '평소 헬스장') : undefined;
+          const isCurrent = current?.exIdx === exIdx || (current === null && exIdx === a.exercises.length - 1);
+          const expanded = expandedOverride.get(ex.id) ?? (isCurrent || editing?.exIdx === exIdx);
           return (
             <ExerciseCard
               key={ex.id}
@@ -324,8 +350,10 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
               editing={editing}
               work={a.work}
               currentSetIdx={current?.exIdx === exIdx ? current.setIdx : null}
+              expanded={expanded}
               lastPlaceName={lastPlaceName}
               unavailable={!isAvailable(place ?? a.place, ex)}
+              onToggleExpand={() => setExpandedOverride((m) => new Map(m).set(ex.id, !expanded))}
               onEdit={setEditing}
               onCopyPrev={(setIdx, prev) =>
                 dispatch({
@@ -412,65 +440,54 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
       )}
 
       {sheet?.kind === 'add' && <ExercisePicker mode="add" onPick={addExercises} onClose={() => setSheet(null)} />}
-      {sheet?.kind === 'why' && a.exercises[sheet.exIdx] && (
-        <ActionSheet title={`${a.exercises[sheet.exIdx].name}, 왜 바꿔요?`} items={whyMenu(sheet.exIdx)} onClose={() => setSheet(null)} />
-      )}
       {sheet?.kind === 'replace' && a.exercises[sheet.exIdx] && (
         <ExercisePicker
           mode="replace"
           current={a.exercises[sheet.exIdx]}
           place={place ?? a.place}
+          initialReason={sheet.reason}
+          rememberPlaceName={place && !place.temp && a.exercises[sheet.exIdx].exerciseId ? placeName : undefined}
           note={
             a.exercises[sheet.exIdx].sets.some((s) => s.done)
-              ? `완료한 ${a.exercises[sheet.exIdx].sets.filter((s) => s.done).length}세트는 ${a.exercises[sheet.exIdx].name} 기록으로 남고, 남은 세트만 바뀌어요. 오늘만 적용돼요.`
-              : '오늘 운동에만 적용돼요. 기본 루틴은 마칠 때 따로 고를 수 있어요.'
+              ? `완료한 ${a.exercises[sheet.exIdx].sets.filter((s) => s.done).length}세트는 유지 · 오늘만`
+              : '오늘만 · 기본 루틴은 마칠 때 따로 골라요'
           }
-          onPick={([p]) => {
+          onPick={([p], meta) => {
             const ex = a.exercises[sheet.exIdx];
-            const kept = ex.sets.filter((s) => s.done).length;
+            const before = a.exercises;
+            const beforeDone = doneSets(a);
             // 새 종목 무게는 그 종목 자신의 이 장소 기록(없으면 시작값)으로: 원래 종목 무게를 옮기지 않는다
             dispatch({
               type: 'exercise/replace',
               exIdx: sheet.exIdx,
               exercise: p,
               plan: defaultSetsFor(p.exerciseId, p.kind, lastLogAt(state.history, p, here)),
-              reason: sheet.reason,
+              reason: meta?.reason ?? 'prefer',
               now: Date.now(),
             });
+            if (meta?.remember && place && !place.temp && ex.exerciseId) {
+              dispatch({ type: 'place/save', place: markUnavailable(place, ex.exerciseId, p.exerciseId) });
+            }
+            setSheet(null);
             toast({
               tone: 'success',
               icon: 'swap',
-              title: `${p.name}(으)로 바꿨어요`,
-              body: kept > 0 ? `완료한 ${kept}세트는 ${ex.name} 기록으로 남겼어요` : undefined,
+              title: `${ex.name} → ${p.name}`,
+              body: meta?.remember ? `${placeName}에서는 항상 이렇게 해요` : undefined,
+              action: {
+                label: '되돌리기',
+                onClick: () => {
+                  if (doneSets(latest.current) !== beforeDone) {
+                    toast({ icon: 'info', title: '그 사이 세트를 완료해서 되돌리지 않았어요' });
+                    return;
+                  }
+                  dispatch({ type: 'session/restoreExercises', exercises: before });
+                },
+              },
             });
-            // 등록된 장소에서 기구가 없어 바꿨으면, 다음부터 여기서는 자동으로 바꿀지 묻는다
-            if (sheet.reason === 'missing' && place && !place.temp && ex.exerciseId && !place.unavailable.includes(ex.exerciseId)) {
-              setSheet({ kind: 'scope', fromId: ex.exerciseId, fromName: ex.name, toId: p.exerciseId, toName: p.name });
-            } else setSheet(null);
           }}
           onClose={() => setSheet(null)}
         />
-      )}
-      {sheet?.kind === 'scope' && place && (
-        <Sheet title={`${placeName}에 ${sheet.fromName} 기구가 없나요?`} onClose={() => setSheet(null)}>
-          <p className="c-2">다음부터 여기서 운동할 때 {sheet.fromName}을(를) {sheet.toName}(으)로 자동으로 바꿔 둘 수 있어요. 기본 루틴은 그대로예요.</p>
-          <div className="btn-row">
-            <button type="button" className="btn btn-secondary btn-lg" onClick={() => setSheet(null)}>
-              오늘만
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary btn-lg"
-              onClick={() => {
-                dispatch({ type: 'place/save', place: markUnavailable(place, sheet.fromId, sheet.toId) });
-                toast({ tone: 'success', icon: 'check', title: `${placeName}에서는 ${sheet.toName}(으)로 할게요`, body: '설정 → 장소에서 되돌릴 수 있어요' });
-                setSheet(null);
-              }}
-            >
-              이 장소에서는 항상
-            </button>
-          </div>
-        </Sheet>
       )}
       {sheet?.kind === 'relabel' && a.exercises[sheet.exIdx] && (
         <ExercisePicker

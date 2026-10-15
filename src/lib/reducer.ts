@@ -51,7 +51,10 @@ export type Action =
   | { type: 'routine/delete'; id: string }
   | { type: 'routine/addMany'; routines: Routine[] }
   | { type: 'onboarding/complete'; routines: Routine[]; weeklyGoal: number }
-  | { type: 'session/start'; routine: Routine | null; now: number }
+  /** swaps: 시작 전 검토에서 고른 오늘만 교체 (루틴 자리 id → 새 종목) */
+  | { type: 'session/start'; routine: Routine | null; now: number; swaps?: Record<string, ExerciseRef> }
+  /** 교체 직후 되돌리기: 종목 목록을 그 전으로 (완료 세트가 바뀌지 않았을 때만 쓴다) */
+  | { type: 'session/restoreExercises'; exercises: ExerciseLog[] }
   | { type: 'session/finish'; now: number; apply: ApplyOptions }
   | { type: 'session/discard' }
   | { type: 'exercise/add'; exercise: NewExercise; now?: number }
@@ -127,6 +130,8 @@ export interface SessionContext {
   history: Session[];
   place?: Place;
   now: number;
+  /** 시작 전 검토에서 고른 오늘만 교체 */
+  swaps?: Record<string, ExerciseRef>;
 }
 
 function placeOf(state: AppState): Place {
@@ -139,23 +144,29 @@ function withSuggestion(e: ExerciseLog, ctx: SessionContext | undefined): Exerci
   return s ? { ...e, suggested: s } : e;
 }
 
-/** 장소 프로필에 "여기서는 이 종목 대신 저걸로"가 있으면 시작할 때 바꿔 둔다. 무게는 대체 종목 자신의 이 장소 기록(없으면 시작값) */
+/**
+ * 시작할 때 종목을 바꿔 둔다: 시작 전 검토에서 고른 오늘만 교체(swaps)가 먼저, 그다음 장소 프로필의 "여기서는 항상".
+ * 무게는 대체 종목 자신의 이 장소 기록(없으면 시작값). 원래 종목 무게를 옮기지 않는다
+ */
 function swapForPlace(t: RoutineExercise, ctx: SessionContext | undefined): ExerciseLog {
   const base = fromRoutineExercise(t);
-  const place = ctx?.place;
-  const to = place && t.exerciseId ? place.swaps[t.exerciseId] : undefined;
-  const info = to ? findExercise(to) : undefined;
-  if (!place || !to || !info || isAvailable(place, t)) return base;
-  const plan = defaultSetsFor(info.id, info.kind, lastLogAt(ctx.history, { exerciseId: info.id, name: info.name }, place.id));
+  if (!ctx) return base;
+  const place = ctx.place;
+  const placeKeyId = place?.id ?? MAIN_PLACE_ID;
+  const chosen = ctx.swaps?.[t.id];
+  const fromProfile = place && t.exerciseId && !isAvailable(place, t) ? place.swaps[t.exerciseId] : undefined;
+  const ref: ExerciseRef | undefined = chosen ?? (fromProfile ? (findExercise(fromProfile) ? { exerciseId: fromProfile, name: findExercise(fromProfile)!.name, kind: findExercise(fromProfile)!.kind } : undefined) : undefined);
+  if (!ref || sameExercise(ref, t)) return base;
+  const plan = defaultSetsFor(ref.exerciseId ?? ref.name, ref.kind, lastLogAt(ctx.history, ref, placeKeyId));
   const n = Math.max(1, t.sets.filter((s) => s.type === 'normal').length);
   const pick = (i: number) => plan[i] ?? plan.at(-1) ?? FALLBACK_SET;
   return {
     ...base,
-    exerciseId: info.id,
-    name: info.name,
-    kind: info.kind,
-    sets: Array.from({ length: n }, (_, i) => logSet(fitSetToKind({ ...pick(i), type: 'normal' }, info.kind))),
-    swap: { from: t.name, reason: 'place' },
+    exerciseId: ref.exerciseId,
+    name: ref.name,
+    kind: ref.kind,
+    sets: Array.from({ length: n }, (_, i) => logSet(fitSetToKind({ ...pick(i), type: 'normal' }, ref.kind))),
+    swap: { from: t.name, reason: chosen ? 'missing' : 'place' },
   };
 }
 
@@ -354,7 +365,13 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case 'session/start':
       if (state.active) return state;
-      return { ...state, active: buildSession(action.routine, action.now, { history: state.history, place: placeOf(state), now: action.now }) };
+      return {
+        ...state,
+        active: buildSession(action.routine, action.now, { history: state.history, place: placeOf(state), now: action.now, swaps: action.swaps }),
+      };
+
+    case 'session/restoreExercises':
+      return withActive(state, (a) => clearTimers({ ...a, exercises: action.exercises }));
 
     case 'session/finish': {
       const a = state.active;
