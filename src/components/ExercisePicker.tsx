@@ -121,7 +121,17 @@ export function ExercisePicker({ mode, current, note, place, rememberPlaceName, 
 
   // 후보 카드의 ⓘ: 같은 시트 자리에서 설명을 열고, 닫아도 선택이 확정되지 않는다
   if (guide) {
-    return <GuideSheet exerciseId={guide.exerciseId} name={guide.name} onPick={() => onPick([guide], meta())} onClose={() => setGuide(null)} />;
+    const sub = suggestions.find((s) => s.info.id === guide.exerciseId);
+    return (
+      <GuideSheet
+        exerciseId={guide.exerciseId}
+        name={guide.name}
+        from={sub ? currentInfo?.name : undefined}
+        diff={sub?.diff}
+        onPick={() => onPick([guide], meta())}
+        onClose={() => setGuide(null)}
+      />
+    );
   }
 
   return (
@@ -184,6 +194,7 @@ export function ExercisePicker({ mode, current, note, place, rememberPlaceName, 
                     <span className="sub-name">{sub.info.name}</span>
                     <span className="t-caption c-2">{sub.needs.length ? sub.needs.join(' · ') : '맨몸'}</span>
                     <span className="t-caption c-2">{sub.reason}</span>
+                    {sub.diff.length > 0 && <span className="t-caption c-2">다른 점 · {sub.diff.join(' · ')}</span>}
                     <span className="t-caption c-2">{sub.lastText ? `지난번 ${sub.lastText}` : '처음 해요'}</span>
                   </button>
                   <button
@@ -204,6 +215,9 @@ export function ExercisePicker({ mode, current, note, place, rememberPlaceName, 
         </section>
       )}
 
+      {showAll && mode === 'replace' && (
+        <p className="t-caption c-2 picker-note">여기서 고르는 운동은 비슷한 대체가 아닐 수 있어요. 기록은 고른 종목 이름으로 남고, 무게는 그 종목 기준으로 새로 시작해요.</p>
+      )}
       {showAll && (
         <>
           <div className="picker-search">

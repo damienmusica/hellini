@@ -135,3 +135,41 @@ describe('정체 감지 (여러 세션 근거)', () => {
     expect(plateauSessions(history, { exerciseId: 'bench-press', name: '벤치프레스' }, 'main')).toBe(0);
   });
 });
+
+// 2026-10-15 3차 리뷰 §5·§9: 보조 중량은 숫자가 클수록 쉬우므로 일반 증량과 반대로 계산한다
+describe('보조 중량 종목 (어시스트 풀업)', () => {
+  const ap = (sets: SetLog[], extra: Partial<ExerciseLog> = {}) => log(sets, extra, 'assisted-pull-up', '어시스트 풀업');
+  const apSession = (id: string, daysAgo: number, sets: SetLog[]): Session => ({
+    id,
+    routineName: 'r',
+    startedAt: NOW - daysAgo * DAY,
+    endedAt: NOW - daysAgo * DAY + 1,
+    exercises: [ap(sets)],
+  });
+  const apPlan = (assist: number) => ap([s(assist, 8, false), s(assist, 8, false), s(assist, 8, false)]);
+
+  it('다 채우면 보조를 단위(머신 5kg)만큼 줄인다 (less-assist). 0 아래로는 안 간다', () => {
+    const out = suggest(apPlan(30), [apSession('a', 2, [s(30, 10), s(30, 10), s(30, 10)])], 'main', NOW);
+    expect(out).toMatchObject({ code: 'less-assist', apply: { field: 'weightKg', value: 25 } });
+    expect(out!.label).toContain('보조를 25kg로');
+    const zero = suggest(apPlan(3), [apSession('a', 2, [s(3, 10), s(3, 10), s(3, 10)])], 'main', NOW);
+    expect(zero).toMatchObject({ code: 'less-assist', apply: { field: 'weightKg', value: 0 } });
+  });
+
+  it('이미 보조를 더 줄여(더 어렵게) 계획했으면 제안하지 않는다', () => {
+    expect(suggest(apPlan(20), [apSession('a', 2, [s(30, 10), s(30, 10), s(30, 10)])], 'main', NOW)).toBeNull();
+  });
+
+  it('두 번 연속 못 채우면 보조를 늘린다 (deload = 부하 줄이기)', () => {
+    const history = [apSession('b', 2, [s(30, 6), s(30, 6), s(30, 5)]), apSession('a', 5, [s(30, 7), s(30, 6), s(30, 6)])];
+    const out = suggest(apPlan(30), history, 'main', NOW);
+    expect(out).toMatchObject({ code: 'deload', apply: { field: 'weightKg', value: 35 } });
+    expect(out!.label).toContain('보조를 35kg로');
+  });
+
+  it('범위 안이면 같은 보조로 횟수부터', () => {
+    const out = suggest(apPlan(30), [apSession('a', 2, [s(30, 9), s(30, 8), s(30, 8)])], 'main', NOW);
+    expect(out).toMatchObject({ code: 'add-reps', apply: { field: 'reps', values: [10, 9, 9] } });
+    expect(out!.label).toContain('같은 보조로');
+  });
+});

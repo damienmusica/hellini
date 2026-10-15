@@ -112,3 +112,24 @@ describe('추천 프로그램', () => {
     expect(new Set(order).size).toBe(6);
   });
 });
+
+// 3차 리뷰 §5: 보조 중량 종목은 무게가 클수록 쉬우므로 무게·1RM·볼륨 PR을 세지 않는다
+describe('보조 중량 종목의 기록', () => {
+  const ap = (id: string, startedAt: number, sets: SetLog[]): Session => ({
+    id,
+    routineName: 'r',
+    startedAt,
+    endedAt: startedAt + 1,
+    exercises: [{ id: `e-${id}`, exerciseId: 'assisted-pull-up', name: '어시스트 풀업', kind: 'reps', restSec: 90, sets }],
+  });
+
+  it('어시스트 풀업은 보조가 커져도 PR이 아니고 횟수만 센다', () => {
+    const history = [ap('a', 1, [s(30, 8)])];
+    const best = bestsByExercise(history).get('assisted-pull-up')!;
+    expect(best).toMatchObject({ weight: 0, e1rm: 0, volume: 0, reps: 8 });
+    expect(setPRs(best, s(40, 8), 'reps', true)).toEqual([]);
+    expect(setPRs(best, s(25, 9), 'reps', true)).toEqual(['reps']);
+    const today = ap('b', 2, [s(40, 8), s(25, 9)]);
+    expect(sessionPRs(today, [today, ...history])).toEqual([{ exercise: '어시스트 풀업', kind: 'reps', value: '9회' }]);
+  });
+});

@@ -235,6 +235,9 @@ function ReviewStep({ routine, place, onBack, onClose }: { routine: Routine; pla
   const swapped = proposals.filter((p) => p.to).length;
   const skipped = proposals.filter((p) => !p.to && p.fallback === 'skip').length;
   const unresolved = proposals.filter((p) => !p.to && p.fallback === 'keep').length;
+  // 총 작업량: 바꾼 종목은 세트 수를 그대로 잇고, 뺀 종목만큼 줄어든다
+  const totalSets = routine.exercises.reduce((n, e) => n + e.sets.length, 0);
+  const todaySets = totalSets - proposals.filter((p) => !p.to && p.fallback === 'skip').reduce((n, p) => n + p.slot.sets.length, 0);
   const label = [swapped ? `${swapped}개 바꾸고` : '', skipped ? `${skipped}개 빼고` : ''].filter(Boolean).join(' ') || '그대로';
   return (
     <Sheet
@@ -254,6 +257,9 @@ function ReviewStep({ routine, place, onBack, onClose }: { routine: Routine; pla
       <p className="t-caption c-2">
         {place?.name ?? '이 장소'}에서 못 하는 운동 {proposals.length}개. 바꾼 종목은 오늘만 적용되고 기본 루틴은 그대로예요.
         {unresolved > 0 ? ` 해결 안 된 ${unresolved}개는 그대로 들어가고 운동 중에 정해요.` : ''}
+      </p>
+      <p className="t-caption c-2 num">
+        오늘 {todaySets}세트{todaySets !== totalSets ? ` (원래 ${totalSets}세트)` : ''} · 같은 종목이 두 자리에 들어가지 않아요
       </p>
       <ul className="review-list">
         {proposals.map((p) => {

@@ -1,4 +1,4 @@
-import { findExercise, weightBasis } from '../../data/exercises';
+import { findExercise, weightBasisOf } from '../../data/exercises';
 import { Icon } from '../../components/Icon';
 import { formatRepRange } from '../../lib/progression';
 import { formatSet, trimKg } from '../../lib/stats';
@@ -135,7 +135,7 @@ export function ExerciseCard(p: Props) {
           <span className="ex-name">{ex.name}</span>
           <span className="t-caption c-2">
             {!isTime && firstNormal ? `목표 ${formatRepRange(firstNormal.reps)}` : ''}
-            {info && !isTime ? ` · ${weightBasis(info.equipment)}` : info ? info.equipment : '직접 추가한 종목'}
+            {info && !isTime ? ` · ${weightBasisOf(info.id)}` : info ? info.equipment : '직접 추가한 종목'}
             {firstTime && <span className="start-tag-inline">시작값</span>}
           </span>
         </button>

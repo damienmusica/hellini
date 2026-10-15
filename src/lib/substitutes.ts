@@ -1,4 +1,5 @@
-import { EXERCISES, findExercise, NEAR_ROLES, requiresOf, ROLE_LABEL, roleOf, type ExerciseInfo } from '../data/exercises';
+import { EXERCISES, findExercise, NEAR_ROLES, requiresOf, ROLE_LABEL, roleOf, weightBasisOf, type ExerciseInfo } from '../data/exercises';
+import { UNILATERAL } from '../data/guides';
 import { isAvailable, placeKey } from './places';
 import { bestSet, formatSet, lastLogFor } from './stats';
 import type { Place, Session, SessionPlace } from './types';
@@ -12,6 +13,25 @@ export interface Substitute {
   lastText: string | null;
   /** 필요한 장비 + 보조 장비 */
   needs: string[];
+  /** 원래 종목과 다른 점 (장비·기록 기준·역할·편측). 데이터에서 계산하고 동등성을 주장하지 않는다 */
+  diff: string[];
+}
+
+/** 원래 종목 → 후보로 바꿀 때 달라지는 것. 고르는 데 중요한 순서(역할 → 더 필요한 보조 장비 → 기록 기준 → 편측 → 장비)로 최대 3개. 장비 자체는 카드의 '필요한 것' 줄에 이미 있다 */
+export function diffOf(cur: ExerciseInfo, info: ExerciseInfo, match: 1 | 2 | 3): string[] {
+  const out: string[] = [];
+  const r1 = roleOf(cur.id);
+  const r2 = roleOf(info.id);
+  if (match < 3 && r1 && r2 && r1 !== r2) out.push(`${ROLE_LABEL[r1]} → ${ROLE_LABEL[r2]}`);
+  const extra = requiresOf(info.id).filter((f) => !requiresOf(cur.id).includes(f));
+  if (extra.length) out.push(`${extra.join('·')} 필요`);
+  const b1 = weightBasisOf(cur.id);
+  const b2 = weightBasisOf(info.id);
+  if (info.kind !== cur.kind) out.push(info.kind === 'time' ? '시간으로 기록' : '횟수로 기록');
+  else if (b1 !== b2 && info.kind === 'reps') out.push(`기록 기준 ${b2}`);
+  if (UNILATERAL.has(info.id) && !UNILATERAL.has(cur.id)) out.push('한쪽씩');
+  if (info.equipment !== cur.equipment) out.push(`${cur.equipment} → ${info.equipment}`);
+  return out.slice(0, 3);
 }
 
 /**
@@ -62,6 +82,7 @@ export function rankSubstitutes(
       reason,
       lastText: best ? formatSet(info.kind, best) : null,
       needs: [info.equipment, ...requiresOf(info.id)].filter((x) => x !== '맨몸' && x !== '기타'),
+      diff: diffOf(cur, info, match as 3 | 2 | 1),
     };
   });
 }

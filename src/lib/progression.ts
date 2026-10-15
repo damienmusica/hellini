@@ -1,4 +1,4 @@
-import { findExercise } from '../data/exercises';
+import { findExercise, isInverseLoad } from '../data/exercises';
 import { lastLogEntry, placeKey } from './places';
 import { bestSet, trimKg } from './stats';
 import type { ExerciseLog, Session, SetLog, SetPlan, Suggested } from './types';
@@ -25,14 +25,15 @@ export function weightIncrement(e: Pick<ExerciseLog, 'exerciseId' | 'name'>): nu
 export const PROGRESSION_VERSION = 1;
 
 /** 제안 이유 코드. 문장은 템플릿으로 만든다 */
-export type SuggestCode = 'add-weight' | 'add-reps' | 'hold-missed' | 'hold-hard' | 'deload' | 'long-gap';
+export type SuggestCode = 'add-weight' | 'less-assist' | 'add-reps' | 'hold-missed' | 'hold-hard' | 'deload' | 'long-gap';
 
 export const SUGGEST_CODE_LABEL: Record<SuggestCode, string> = {
   'add-weight': '증량',
+  'less-assist': '보조 줄이기',
   'add-reps': '횟수 늘리기',
   'hold-missed': '같은 무게로 한 번 더',
   'hold-hard': '같은 무게로 한 번 더 (힘들었음)',
-  deload: '감량',
+  deload: '부하 줄이기',
   'long-gap': '오랜만 · 확인 세트',
 };
 
@@ -76,6 +77,9 @@ function missedAny(done: SetLog[], plan: SetPlan[]): boolean {
  * 3. 목표 아래로 끝난 세트가 있으면: 직전에도 같은 무게 이상에서 그랬으면 10% 감량 (deload), 아니면 같은 무게로 한 번 더 (hold-missed)
  * 4. 모든 세트가 범위 위쪽 끝에 닿았으면: 힘들었다고 했으면 한 번 더 (hold-hard), 아니면 최소 증량 단위만큼 올리기 (add-weight)
  * 5. 범위 안이면 같은 무게로 약한 세트부터 한 번씩 더 (add-reps)
+ *
+ * 보조 중량 종목(어시스트 풀업)은 숫자가 클수록 쉽다: "올리기"는 보조를 단위만큼 줄이기(less-assist), 감량은 보조 늘리기다.
+ * 지난 보조는 가장 큰 값(가장 쉬웠던 세트)을 기준으로 삼는다.
  */
 export function suggest(current: ExerciseLog, history: Session[], place: string, now: number): Suggested | null {
   if (current.kind !== 'reps') return null;
@@ -89,10 +93,14 @@ export function suggest(current: ExerciseLog, history: Session[], place: string,
   const v = PROGRESSION_VERSION;
   const basedOn = entry.session.id;
 
-  const plannedWeight = Math.max(...normal.map((s) => s.weightKg));
-  const lastWeight = Math.min(...done.map((s) => s.weightKg));
-  if (plannedWeight > lastWeight) return null;
+  const inverse = isInverseLoad(current.exerciseId ?? current.name);
+  // 보통 종목: 계획은 가장 무거운 세트, 지난 기록은 가장 가벼운 세트(보수적). 보조 종목은 반대
+  const plannedWeight = inverse ? Math.min(...normal.map((s) => s.weightKg)) : Math.max(...normal.map((s) => s.weightKg));
+  const lastWeight = inverse ? Math.max(...done.map((s) => s.weightKg)) : Math.min(...done.map((s) => s.weightKg));
+  // 이미 더 어렵게 계획했으면 제안하지 않는다
+  if (inverse ? plannedWeight < lastWeight : plannedWeight > lastWeight) return null;
   const kg = trimKg(lastWeight);
+  const wt = inverse ? `보조 ${kg}kg` : `${kg}kg`;
   const restore = plannedWeight !== lastWeight && lastWeight > 0 ? ({ field: 'weightKg', value: lastWeight } as const) : undefined;
 
   const gapDays = (now - entry.session.startedAt) / DAY;
@@ -100,7 +108,7 @@ export function suggest(current: ExerciseLog, history: Session[], place: string,
     return {
       v,
       code: 'long-gap',
-      label: `${Math.floor(gapDays / 7)}주 만이에요. 올리기 전에 지난번 ${lastWeight > 0 ? `${kg}kg로` : '그대로'} 확인 세트부터 해봐요.`,
+      label: `${Math.floor(gapDays / 7)}주 만이에요. 올리기 전에 지난번 ${lastWeight > 0 ? `${wt}로` : '그대로'} 확인 세트부터 해봐요.`,
       apply: restore,
       basedOn,
     };
@@ -114,6 +122,17 @@ export function suggest(current: ExerciseLog, history: Session[], place: string,
     const prevDone = prev ? working(prev.log) : [];
     const prevMissed =
       prevDone.length >= normal.length && Math.min(...prevDone.map((s) => s.weightKg)) >= lastWeight && missedAny(prevDone, normal);
+    if (inverse && prevMissed) {
+      // 보조 종목의 감량 = 보조를 단위만큼 늘리기
+      const value = Math.round((lastWeight + inc) * 100) / 100;
+      return {
+        v,
+        code: 'deload',
+        label: `두 번 연속 목표 아래였어요. 보조를 ${trimKg(value)}kg로 늘려서 횟수부터 다시 채워요.`,
+        apply: { field: 'weightKg', value },
+        basedOn,
+      };
+    }
     if (prevMissed && lastWeight > 0) {
       const value = Math.max(inc, roundTo(Math.floor((lastWeight * DELOAD_RATIO) / inc) * inc, inc));
       return {
@@ -127,7 +146,7 @@ export function suggest(current: ExerciseLog, history: Session[], place: string,
     return {
       v,
       code: 'hold-missed',
-      label: `지난번 ${lastWeight > 0 ? `${kg}kg × ` : ''}${minReps}회에서 멈췄어요. 같은 무게로 한 번 더 해봐요.`,
+      label: `지난번 ${lastWeight > 0 ? `${wt} × ` : ''}${minReps}회에서 멈췄어요. ${inverse ? '같은 보조로' : '같은 무게로'} 한 번 더 해봐요.`,
       apply: restore,
       basedOn,
     };
@@ -140,8 +159,19 @@ export function suggest(current: ExerciseLog, history: Session[], place: string,
       return {
         v,
         code: 'hold-hard',
-        label: `지난번 ${kg}kg × ${minReps} 다 채웠지만 한계였다고 했죠. 오늘 한 번 더 같은 무게로 하고 올려요.`,
+        label: `지난번 ${wt} × ${minReps} 다 채웠지만 한계였다고 했죠. 오늘 한 번 더 ${inverse ? '같은 보조로' : '같은 무게로'} 하고 올려요.`,
         apply: restore,
+        basedOn,
+      };
+    }
+    if (inverse && lastWeight > 0) {
+      // 보조를 단위만큼 줄인다 (0 아래로는 내려가지 않는다: 보조 0 = 풀업)
+      const value = Math.max(0, Math.round((lastWeight - inc) * 100) / 100);
+      return {
+        v,
+        code: 'less-assist',
+        label: `지난번 보조 ${kg}kg × ${minReps} 성공! 오늘은 보조를 ${trimKg(value)}kg로 줄여 볼까요?`,
+        apply: { field: 'weightKg', value },
         basedOn,
       };
     }
@@ -171,11 +201,11 @@ export function suggest(current: ExerciseLog, history: Session[], place: string,
     return Math.min(r.hi, Math.max(r.lo, done[i].reps + 1));
   });
   const lastReps = normal.map((_, i) => done[i].reps);
-  const weightText = lastWeight > 0 ? `${kg}kg × ` : '';
+  const weightText = lastWeight > 0 ? `${wt} × ` : '';
   return {
     v,
     code: 'add-reps',
-    label: `지난번 ${weightText}${lastReps.join('·')}. 오늘은 같은 무게로 ${values.join('·')}회 어때요?`,
+    label: `지난번 ${weightText}${lastReps.join('·')}. 오늘은 ${inverse ? '같은 보조로' : '같은 무게로'} ${values.join('·')}회 어때요?`,
     apply: { field: 'reps', values, weightKg: restore?.value },
     basedOn,
   };

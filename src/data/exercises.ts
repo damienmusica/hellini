@@ -97,7 +97,7 @@ const ROWS: Row[] = [
   ['deadlift', '데드리프트', 'Deadlift', '등', '바벨', ['lowerBack', 'glutes', 'hamstrings'], ['traps', 'quads', 'forearms'], '바는 정강이에 붙이고 허리는 중립'],
   ['pull-up', '풀업', 'Pull-up', '등', '맨몸', ['lats'], ['biceps', 'upperBack'], '가슴을 바 쪽으로 끌어올린다'],
   ['chin-up', '친업', 'Chin-up', '등', '맨몸', ['lats', 'biceps'], ['upperBack'], '손바닥이 나를 보게 잡는다'],
-  ['assisted-pull-up', '어시스트 풀업', 'Assisted Pull-up', '등', '머신', ['lats'], ['biceps', 'upperBack'], '무게가 클수록 쉬워진다'],
+  ['assisted-pull-up', '어시스트 풀업', 'Assisted Pull-up', '등', '머신', ['lats'], ['biceps', 'upperBack'], '보조 무게가 클수록 쉬워진다. 보조를 줄여 가는 게 발전'],
   ['lat-pulldown', '랫풀다운', 'Lat Pulldown', '등', '케이블', ['lats'], ['biceps', 'upperBack'], '팔이 아니라 팔꿈치를 옆구리로 당긴다'],
   ['barbell-row', '바벨 로우', 'Barbell Row', '등', '바벨', ['upperBack', 'lats'], ['biceps', 'rearDelts', 'lowerBack'], '상체 45° 숙이고 배꼽 쪽으로 당긴다'],
   ['dumbbell-row', '원암 덤벨 로우', 'One-arm Dumbbell Row', '등', '덤벨', ['lats', 'upperBack'], ['biceps', 'rearDelts'], '덤벨을 골반 쪽으로 끌어온다'],
@@ -105,6 +105,7 @@ const ROWS: Row[] = [
   ['seated-cable-row', '시티드 케이블 로우', 'Seated Cable Row', '등', '케이블', ['upperBack', 'lats'], ['biceps', 'rearDelts'], '가슴을 펴고 견갑을 뒤로 모은다'],
   ['t-bar-row', '티바 로우', 'T-Bar Row', '등', '바벨', ['upperBack', 'lats'], ['biceps', 'lowerBack'], '허리를 굽히지 말고 가슴을 내민다'],
   ['back-extension', '백 익스텐션', 'Back Extension', '등', '맨몸', ['lowerBack'], ['glutes', 'hamstrings'], '몸이 일직선이 될 때까지만 올라온다'],
+  ['floor-back-extension', '바닥 백 익스텐션', 'Floor Back Extension', '등', '맨몸', ['lowerBack'], ['glutes'], '엎드려 가슴과 허벅지를 살짝 띄웠다 내린다. 허리를 꺾지 않는다'],
   ['shrug', '슈러그', 'Shrug', '등', '덤벨', ['traps'], ['forearms'], '어깨를 귀 쪽으로 곧게 올린다'],
 
   // 어깨
@@ -279,7 +280,7 @@ const ROLE_MEMBERS: Record<Role, string[]> = {
   dip: ['dips', 'bench-dips'],
   'vertical-pull': ['pull-up', 'chin-up', 'assisted-pull-up', 'lat-pulldown'],
   'horizontal-pull': ['barbell-row', 'dumbbell-row', 'dumbbell-bent-over-row', 'seated-cable-row', 't-bar-row'],
-  hinge: ['deadlift', 'romanian-deadlift', 'dumbbell-romanian-deadlift', 'back-extension', 'kettlebell-swing'],
+  hinge: ['deadlift', 'romanian-deadlift', 'dumbbell-romanian-deadlift', 'back-extension', 'floor-back-extension', 'kettlebell-swing'],
   shrug: ['shrug'],
   'vertical-press': ['overhead-press', 'dumbbell-shoulder-press', 'shoulder-press-machine', 'arnold-press'],
   'lateral-raise': ['lateral-raise', 'cable-lateral-raise', 'upright-row'],
@@ -353,6 +354,8 @@ export const REQUIRES: Partial<Record<string, Feature[]>> = {
   'pull-up': ['풀업바'],
   'chin-up': ['풀업바'],
   'hanging-leg-raise': ['풀업바'],
+  // 바닥 변형(floor-back-extension)은 맨몸, 전용 벤치 변형은 백익스텐션 벤치가 있어야 한다
+  'back-extension': ['백익스텐션 벤치'],
 };
 
 export function requiresOf(exerciseId: string | undefined): Feature[] {
@@ -376,4 +379,18 @@ export function weightBasis(equipment: Equipment | undefined): string {
     default:
       return '무게';
   }
+}
+
+/** 보조 중량 종목: 숫자가 클수록 쉽다. 증량 방향이 반대이고(보조를 줄이는 게 발전) 무게·1RM·볼륨 PR은 세지 않는다 */
+export const INVERSE_LOAD = new Set(['assisted-pull-up']);
+
+export function isInverseLoad(idOrName: string | undefined): boolean {
+  const info = findExercise(idOrName);
+  return !!info && INVERSE_LOAD.has(info.id);
+}
+
+/** 종목 기준 기록 단위. 보조 중량 종목은 장비 기준(기구 표시 무게)과 다르다 */
+export function weightBasisOf(idOrName: string | undefined): string {
+  if (isInverseLoad(idOrName)) return '보조 중량 (클수록 쉬움)';
+  return weightBasis(findExercise(idOrName)?.equipment);
 }

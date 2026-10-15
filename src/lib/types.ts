@@ -76,7 +76,7 @@ export interface ExerciseLog {
 export type Equipment = '바벨' | '덤벨' | '머신' | '케이블' | '맨몸' | '케틀벨' | '스미스' | '기타';
 
 /** 장비 종류만으로는 모자란 필수 보조 장비 (벤치, 인클라인 벤치, 랙, 풀업바) */
-export type Feature = '벤치' | '인클라인 벤치' | '랙' | '풀업바';
+export type Feature = '벤치' | '인클라인 벤치' | '랙' | '풀업바' | '백익스텐션 벤치';
 
 /** 운동하는 장소. 기본 장소(main)는 장비 제한이 없다 */
 export interface Place {

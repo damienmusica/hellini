@@ -9,12 +9,12 @@ export function mainPlace(): Place {
 
 /** 장비 체크리스트에 보여줄 것. 맨몸·기타는 항상 있는 것으로 본다 */
 export const CHECKABLE_EQUIPMENT: Equipment[] = ['바벨', '덤벨', '머신', '케이블', '스미스', '케틀벨'];
-export const CHECKABLE_FEATURES: Feature[] = ['벤치', '인클라인 벤치', '랙', '풀업바'];
+export const CHECKABLE_FEATURES: Feature[] = ['벤치', '인클라인 벤치', '랙', '풀업바', '백익스텐션 벤치'];
 
 /** 새 장소 프리셋: 확인하지 않은 장비를 있다고 가정하지 않도록 명시적으로 고른다 */
 export const PLACE_PRESETS: { id: string; name: string; desc: string; equipment: Equipment[]; features: Feature[] }[] = [
   { id: 'dumbbell-bench', name: '덤벨 + 벤치', desc: '호텔 짐, 소형 헬스장', equipment: ['덤벨'], features: ['벤치', '인클라인 벤치'] },
-  { id: 'gym', name: '기본 헬스장', desc: '바벨·덤벨·머신·케이블·랙·벤치', equipment: ['바벨', '덤벨', '머신', '케이블', '스미스'], features: ['벤치', '인클라인 벤치', '랙', '풀업바'] },
+  { id: 'gym', name: '기본 헬스장', desc: '바벨·덤벨·머신·케이블·랙·벤치', equipment: ['바벨', '덤벨', '머신', '케이블', '스미스'], features: ['벤치', '인클라인 벤치', '랙', '풀업바', '백익스텐션 벤치'] },
   { id: 'bodyweight', name: '맨몸', desc: '기구 없이', equipment: [], features: [] },
 ];
 

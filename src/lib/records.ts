@@ -1,4 +1,4 @@
-import { findExercise, type Muscle } from '../data/exercises';
+import { findExercise, isInverseLoad, type Muscle } from '../data/exercises';
 import { logKey } from './stats';
 import type { ExerciseLog, Session, SetLog } from './types';
 
@@ -34,7 +34,9 @@ function countsForRecord(s: SetLog): boolean {
   return s.done && s.type !== 'warmup';
 }
 
-export function accumulate(best: Best, s: SetLog): Best {
+/** 보조 중량 종목은 무게가 클수록 쉬우므로 무게·추정 1RM·볼륨은 기록으로 치지 않고 횟수만 본다 */
+export function accumulate(best: Best, s: SetLog, inverse = false): Best {
+  if (inverse) return { ...best, reps: Math.max(best.reps, s.reps), duration: Math.max(best.duration, s.durationSec) };
   return {
     weight: Math.max(best.weight, s.weightKg),
     e1rm: Math.max(best.e1rm, estimate1RM(s.weightKg, s.reps)),
@@ -50,8 +52,9 @@ export function bestsByExercise(history: Session[]): Map<string, Best> {
   for (const session of history) {
     for (const e of session.exercises) {
       const key = logKey(e);
+      const inverse = isInverseLoad(e.exerciseId ?? e.name);
       let best = map.get(key) ?? emptyBest();
-      for (const s of e.sets) if (countsForRecord(s)) best = accumulate(best, s);
+      for (const s of e.sets) if (countsForRecord(s)) best = accumulate(best, s, inverse);
       map.set(key, best);
     }
   }
@@ -59,10 +62,14 @@ export function bestsByExercise(history: Session[]): Map<string, Best> {
 }
 
 /** 이 세트가 이전 최고 기록을 넘었는지. 처음 하는 종목은 PR로 치지 않는다 */
-export function setPRs(prev: Best | undefined, s: SetLog, kind: ExerciseLog['kind']): PRKind[] {
+export function setPRs(prev: Best | undefined, s: SetLog, kind: ExerciseLog['kind'], inverse = false): PRKind[] {
   if (!prev || !countsForRecord(s)) return [];
   if (kind === 'time') return [];
   const out: PRKind[] = [];
+  if (inverse) {
+    if (s.reps > prev.reps) out.push('reps');
+    return out;
+  }
   if (s.weightKg > 0) {
     if (s.weightKg > prev.weight) out.push('weight');
     if (estimate1RM(s.weightKg, s.reps) > prev.e1rm + 0.01) out.push('e1rm');
@@ -96,10 +103,11 @@ export function sessionPRs(session: Session, history: Session[]): SessionPR[] {
     let running = bests.get(logKey(e));
     if (!running) continue;
     running = { ...running };
+    const inverse = isInverseLoad(e.exerciseId ?? e.name);
     const found = new Map<PRKind, string>();
     for (const s of e.sets) {
-      for (const k of setPRs(running, s, e.kind)) found.set(k, prValue(k, s));
-      if (countsForRecord(s)) running = accumulate(running, s);
+      for (const k of setPRs(running, s, e.kind, inverse)) found.set(k, prValue(k, s));
+      if (countsForRecord(s)) running = accumulate(running, s, inverse);
     }
     const kind = PR_PRIORITY.find((k) => found.has(k));
     if (kind) out.push({ exercise: e.name, kind, value: found.get(kind)! });
@@ -125,9 +133,9 @@ export function muscleSets(sessions: Session[]): Map<Muscle, number> {
 }
 
 /** 지난 최고 기록에 이번 세션의 다른 완료 세트를 더한 기준 */
-export function runningBest(prev: Best | undefined, sets: SetLog[]): Best | undefined {
+export function runningBest(prev: Best | undefined, sets: SetLog[], inverse = false): Best | undefined {
   if (!prev) return undefined;
-  return sets.filter(countsForRecord).reduce(accumulate, { ...prev });
+  return sets.filter(countsForRecord).reduce((b, s) => accumulate(b, s, inverse), { ...prev });
 }
 
 /** 세션 안에서 PR이었던 세트 위치 (순서대로 비교) */
@@ -135,13 +143,14 @@ export function prSetIndexes(prev: Best | undefined, log: ExerciseLog): Set<numb
   const out = new Set<number>();
   if (!prev) return out;
   let running = { ...prev };
+  const inverse = isInverseLoad(log.exerciseId ?? log.name);
   const order = log.sets
     .map((s, i) => ({ s, i }))
     .filter(({ s }) => countsForRecord(s))
     .sort((x, y) => (x.s.completedAt ?? 0) - (y.s.completedAt ?? 0));
   for (const { s, i } of order) {
-    if (setPRs(running, s, log.kind).length > 0) out.add(i);
-    running = accumulate(running, s);
+    if (setPRs(running, s, log.kind, inverse).length > 0) out.add(i);
+    running = accumulate(running, s, inverse);
   }
   return out;
 }

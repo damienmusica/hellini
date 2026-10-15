@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { findExercise } from '../../data/exercises';
+import { findExercise, isInverseLoad } from '../../data/exercises';
 import { defaultSetsFor } from '../../data/programs';
 import { ExercisePicker } from '../../components/ExercisePicker';
 import { GuideSheet } from '../../components/GuideSheet';
@@ -135,8 +135,9 @@ function WorkoutView({ a, onMinimize, onFinished }: { a: ActiveSession } & Props
   const complete = (exIdx: number, setIdx: number) => {
     const ex = a.exercises[exIdx];
     const set = ex.sets[setIdx];
-    const prev = runningBest(bests.get(logKey(ex)), ex.sets.filter((_, i) => i !== setIdx));
-    const kinds = setPRs(prev, { ...set, done: true }, ex.kind);
+    const inverse = isInverseLoad(ex.exerciseId ?? ex.name);
+    const prev = runningBest(bests.get(logKey(ex)), ex.sets.filter((_, i) => i !== setIdx), inverse);
+    const kinds = setPRs(prev, { ...set, done: true }, ex.kind, inverse);
     dispatch({ type: 'set/complete', exIdx, setIdx, now: Date.now() });
     setEditing(null);
     haptic(15);

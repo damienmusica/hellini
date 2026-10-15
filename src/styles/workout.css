@@ -1320,3 +1320,30 @@
   color: var(--text-2);
   padding: 8px 4px;
 }
+
+/* v3.2: 후보 차이·설명 오류 신고 */
+.guide-diff {
+  padding: 10px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md, 12px);
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.guide-diff p {
+  margin: 0;
+}
+.guide-diff p + p {
+  margin-top: 2px;
+}
+.guide-report {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--accent);
+  text-decoration: underline;
+  min-height: 44px;
+  line-height: 44px;
+}
+.picker-note {
+  margin: 0 0 8px;
+}
