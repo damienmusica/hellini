@@ -1,0 +1,88 @@
+import { EXERCISES, findExercise, NEAR_ROLES, requiresOf, ROLE_LABEL, roleOf, weightBasisOf, type ExerciseInfo } from '../data/exercises';
+import { UNILATERAL } from '../data/guides';
+import { isAvailable, placeKey } from './places';
+import { bestSet, formatSet, lastLogFor } from './stats';
+import type { Place, Session, SessionPlace } from './types';
+
+export interface Substitute {
+  info: ExerciseInfo;
+  /** 3: 같은 역할, 2: 비슷한 역할, 1: 같은 부위(역할 다름 — 유사 대체로 치지 않는다) */
+  match: 3 | 2 | 1;
+  reason: string;
+  /** 이 종목의 지난 기록 (없으면 처음) */
+  lastText: string | null;
+  /** 필요한 장비 + 보조 장비 */
+  needs: string[];
+  /** 원래 종목과 다른 점 (장비·기록 기준·역할·편측). 데이터에서 계산하고 동등성을 주장하지 않는다 */
+  diff: string[];
+}
+
+/** 원래 종목 → 후보로 바꿀 때 달라지는 것. 고르는 데 중요한 순서(역할 → 더 필요한 보조 장비 → 기록 기준 → 편측 → 장비)로 최대 3개. 장비 자체는 카드의 '필요한 것' 줄에 이미 있다 */
+export function diffOf(cur: ExerciseInfo, info: ExerciseInfo, match: 1 | 2 | 3): string[] {
+  const out: string[] = [];
+  const r1 = roleOf(cur.id);
+  const r2 = roleOf(info.id);
+  if (match < 3 && r1 && r2 && r1 !== r2) out.push(`${ROLE_LABEL[r1]} → ${ROLE_LABEL[r2]}`);
+  const extra = requiresOf(info.id).filter((f) => !requiresOf(cur.id).includes(f));
+  if (extra.length) out.push(`${extra.join('·')} 필요`);
+  const b1 = weightBasisOf(cur.id);
+  const b2 = weightBasisOf(info.id);
+  if (info.kind !== cur.kind) out.push(info.kind === 'time' ? '시간으로 기록' : '횟수로 기록');
+  else if (b1 !== b2 && info.kind === 'reps') out.push(`기록 기준 ${b2}`);
+  if (UNILATERAL.has(info.id) && !UNILATERAL.has(cur.id)) out.push('한쪽씩');
+  if (info.equipment !== cur.equipment) out.push(`${cur.equipment} → ${info.equipment}`);
+  return out.slice(0, 3);
+}
+
+/**
+ * 대체 운동 후보 순위 (결정 규칙, 같은 입력이면 같은 결과).
+ * 1) 역할이 같은 종목 → 2) 비슷한 역할 → 3) 같은 부위. 각 단계 안에서는 해 본 적 있는 종목 먼저, 그다음 라이브러리 순서.
+ * 무게는 옮기지 않는다: 새 종목의 무게는 그 종목 자신의 기록이나 시작값으로 정한다.
+ */
+export function rankSubstitutes(
+  current: { exerciseId?: string; name: string },
+  history: Session[],
+  opts: {
+    place?: Place | SessionPlace;
+    limit?: number;
+    /** 기구 사용 중: 같은 장비·같은 보조 장비를 쓰는 후보는 뒤로 */
+    avoidSameEquipment?: boolean;
+    /** 같은 역할·비슷한 역할만 (같은 부위라는 이유로는 제안하지 않는다). 자동 제안과 후보 카드의 기본 */
+    strict?: boolean;
+  } = {},
+): Substitute[] {
+  const cur = findExercise(current.exerciseId ?? current.name);
+  if (!cur) return [];
+  const limit = opts.limit ?? 8;
+  const role = roleOf(cur.id);
+  const near = new Set(role ? NEAR_ROLES[role] ?? [] : []);
+  const here = opts.place ? placeKey({ place: opts.place }) : undefined;
+
+  // 없는 기구·이 장소에서 뺀 종목은 점수를 매기기 전에 제외한다
+  const scored = EXERCISES.filter((e) => e.id !== cur.id && isAvailable(opts.place, e))
+    .map((info, order) => {
+      const r = roleOf(info.id);
+      const match: 0 | 1 | 2 | 3 = r && r === role ? 3 : r && near.has(r) ? 2 : info.part === cur.part ? 1 : 0;
+      const last = lastLogFor(history, { exerciseId: info.id, name: info.name }, here);
+      const best = last ? bestSet(last) : undefined;
+      // 사용 중이면 같은 장비(랙·바벨 등)를 요구하는 후보는 뒤로 보낸다
+      const sameRig = opts.avoidSameEquipment && (info.equipment === cur.equipment || requiresOf(info.id).some((f) => requiresOf(cur.id).includes(f)));
+      return { info, match, order, last, best, sameRig: sameRig ? 1 : 0 };
+    })
+    .filter((x) => (opts.strict ? x.match >= 2 : x.match > 0))
+    .sort((a, b) => a.sameRig - b.sameRig || b.match - a.match || Number(!!b.last) - Number(!!a.last) || a.order - b.order);
+
+  return scored.slice(0, limit).map(({ info, match, best }) => {
+    const r = roleOf(info.id);
+    const reason =
+      match === 3 ? `같은 역할 · ${ROLE_LABEL[r!]}` : match === 2 ? `비슷한 역할 · ${ROLE_LABEL[r!]}` : `같은 부위 · ${info.part}`;
+    return {
+      info,
+      match: match as 3 | 2 | 1,
+      reason,
+      lastText: best ? formatSet(info.kind, best) : null,
+      needs: [info.equipment, ...requiresOf(info.id)].filter((x) => x !== '맨몸' && x !== '기타'),
+      diff: diffOf(cur, info, match as 3 | 2 | 1),
+    };
+  });
+}

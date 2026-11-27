@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { NumberField } from '../components/NumberField';
+import { Icon } from '../components/Icon';
+import { Ring } from '../components/Ring';
 import { cue } from '../lib/cues';
 import { useCountdownTicks, useNow } from '../lib/hooks';
 import { useStore } from '../lib/store';
@@ -15,6 +16,7 @@ import {
   intervalTotalMs,
   type Clock,
   type IntervalConfig,
+  type IntervalPhase,
 } from '../lib/timer';
 
 type Mode = 'interval' | 'countdown' | 'stopwatch';
@@ -60,10 +62,7 @@ export function Timers({ onRunningChange }: { onRunningChange: (running: boolean
   const [mode, setMode] = useState<Mode>('interval');
   const [running, setRunning] = useState<Record<Mode, boolean>>({ interval: false, countdown: false, stopwatch: false });
 
-  const report = useCallback<Report>(
-    (m, r) => setRunning((prev) => (prev[m] === r ? prev : { ...prev, [m]: r })),
-    [],
-  );
+  const report = useCallback<Report>((m, r) => setRunning((prev) => (prev[m] === r ? prev : { ...prev, [m]: r })), []);
 
   useEffect(() => {
     onRunningChange(Object.values(running).some(Boolean));
@@ -72,13 +71,13 @@ export function Timers({ onRunningChange }: { onRunningChange: (running: boolean
   return (
     <section className="screen">
       <header className="screen-header">
-        <h1>타이머</h1>
+        <h1 className="t-title">타이머</h1>
       </header>
       <div className="segmented" role="tablist" aria-label="타이머 종류">
         {MODES.map(([m, label]) => (
           <button key={m} type="button" role="tab" aria-selected={mode === m} className={mode === m ? 'is-on' : ''} onClick={() => setMode(m)}>
             {label}
-            {running[m] && mode !== m ? ' •' : ''}
+            {running[m] && mode !== m && <span className="live-dot" aria-label="실행 중" />}
           </button>
         ))}
       </div>
@@ -103,25 +102,63 @@ function useTimerClock(mode: Mode, report: Report, tickMs: number) {
   const start = useCallback(() => setClock((c) => clockStart(c, Date.now())), []);
   const pause = useCallback(() => setClock((c) => clockPause(c, Date.now())), []);
   const reset = useCallback(() => setClock(idleClock), []);
-  return {
-    clock,
-    now,
-    elapsed: clockElapsed(clock, now),
-    started: clock.running || clock.base > 0,
-    start,
-    pause,
-    reset,
-  };
+  return { clock, now, elapsed: clockElapsed(clock, now), started: clock.running || clock.base > 0, start, pause, reset };
 }
 
-const INTERVAL_PRESETS: { label: string; cfg: IntervalConfig }[] = [
-  { label: '타바타 20/10 ×8', cfg: { prepareSec: 10, workSec: 20, restSec: 10, rounds: 8 } },
-  { label: '30/30 ×10', cfg: { prepareSec: 10, workSec: 30, restSec: 30, rounds: 10 } },
-  { label: '40/20 ×8', cfg: { prepareSec: 10, workSec: 40, restSec: 20, rounds: 8 } },
-  { label: 'EMOM 1분 ×10', cfg: { prepareSec: 10, workSec: 60, restSec: 0, rounds: 10 } },
+type TimerClock = ReturnType<typeof useTimerClock>;
+
+function StepRow({ label, value, display, step, min, max, onChange }: { label: string; value: number; display: string; step: number; min: number; max: number; onChange: (v: number) => void }) {
+  return (
+    <div className="step-row">
+      <span className="t-headline">{label}</span>
+      <div className="step-ctrl">
+        <button type="button" className="icon-btn" aria-label={`${label} 줄이기`} disabled={value <= min} onClick={() => onChange(Math.max(min, value - step))}>
+          <Icon name="minus" size={18} strokeWidth={2.6} />
+        </button>
+        <span className="step-value num" aria-label={`${label} ${display}`}>
+          {display}
+        </span>
+        <button type="button" className="icon-btn" aria-label={`${label} 늘리기`} disabled={value >= max} onClick={() => onChange(Math.min(max, value + step))}>
+          <Icon name="plus" size={18} strokeWidth={2.6} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Controls({ t, done }: { t: TimerClock; done: boolean }) {
+  return (
+    <div className="timer-controls">
+      <button type="button" className="round-btn" aria-label="리셋" onClick={t.reset}>
+        <Icon name="reset" size={24} />
+      </button>
+      {!done &&
+        (t.clock.running ? (
+          <button type="button" className="round-btn is-primary" aria-label="일시정지" onClick={t.pause}>
+            <Icon name="pause" size={30} strokeWidth={3} />
+          </button>
+        ) : (
+          <button type="button" className="round-btn is-primary" aria-label="계속" onClick={t.start}>
+            <Icon name="play" size={28} />
+          </button>
+        ))}
+      <span className="round-btn is-ghost" aria-hidden="true" />
+    </div>
+  );
+}
+
+const INTERVAL_PRESETS: { name: string; cfg: IntervalConfig }[] = [
+  { name: '타바타', cfg: { prepareSec: 10, workSec: 20, restSec: 10, rounds: 8 } },
+  { name: '30/30', cfg: { prepareSec: 10, workSec: 30, restSec: 30, rounds: 10 } },
+  { name: '40/20', cfg: { prepareSec: 10, workSec: 40, restSec: 20, rounds: 8 } },
+  { name: 'EMOM', cfg: { prepareSec: 10, workSec: 60, restSec: 0, rounds: 10 } },
 ];
 
-const PHASE_LABEL = { prepare: '준비', work: '운동', rest: '휴식', done: '완료!' } as const;
+const PHASE_LABEL: Record<IntervalPhase, string> = { prepare: '준비', work: '운동', rest: '휴식', done: '완료!' };
+
+function sameCfg(a: IntervalConfig, b: IntervalConfig) {
+  return a.workSec === b.workSec && a.restSec === b.restSec && a.rounds === b.rounds && a.prepareSec === b.prepareSec;
+}
 
 function IntervalTimer({ report }: { report: Report }) {
   const { state } = useStore();
@@ -146,7 +183,6 @@ function IntervalTimer({ report }: { report: Report }) {
     prevKey.current = key;
     if (key === null || key === prev) return;
     if (prev === null) {
-      // 준비 시간 없이 바로 시작하는 경우
       if (ph.phase === 'work') cue('go', settings);
       return;
     }
@@ -163,53 +199,62 @@ function IntervalTimer({ report }: { report: Report }) {
   if (!t.started) {
     return (
       <div className="timer-pane">
-        <div className="chip-row">
+        <div className="preset-grid">
           {INTERVAL_PRESETS.map((p) => (
-            <button key={p.label} type="button" className="chip chip-preset" onClick={() => setCfg(p.cfg)}>
-              {p.label}
+            <button key={p.name} type="button" className={`preset${sameCfg(p.cfg, cfg) ? ' is-on' : ''}`} onClick={() => setCfg(p.cfg)}>
+              <span className="t-headline">{p.name}</span>
+              <span className="t-caption c-2">
+                {p.cfg.restSec > 0 ? `${p.cfg.workSec}초 / ${p.cfg.restSec}초` : `${p.cfg.workSec}초마다`} × {p.cfg.rounds}
+              </span>
             </button>
           ))}
         </div>
-        <div className="field-grid">
-          <label className="field">
-            <span>운동(초)</span>
-            <NumberField value={cfg.workSec} min={1} max={3600} label="운동 시간" onChange={(workSec) => setCfg({ workSec })} />
-          </label>
-          <label className="field">
-            <span>휴식(초)</span>
-            <NumberField value={cfg.restSec} max={3600} label="휴식 시간" onChange={(restSec) => setCfg({ restSec })} />
-          </label>
-          <label className="field">
-            <span>라운드</span>
-            <NumberField value={cfg.rounds} min={1} max={99} label="라운드" onChange={(rounds) => setCfg({ rounds })} />
-          </label>
-          <label className="field">
-            <span>준비(초)</span>
-            <NumberField value={cfg.prepareSec} max={60} label="준비 시간" onChange={(prepareSec) => setCfg({ prepareSec })} />
-          </label>
+        <div className="group">
+          <StepRow label="운동" value={cfg.workSec} display={formatSeconds(cfg.workSec)} step={5} min={5} max={600} onChange={(workSec) => setCfg({ workSec })} />
+          <StepRow label="휴식" value={cfg.restSec} display={cfg.restSec ? formatSeconds(cfg.restSec) : '없음'} step={5} min={0} max={600} onChange={(restSec) => setCfg({ restSec })} />
+          <StepRow label="라운드" value={cfg.rounds} display={`${cfg.rounds}회`} step={1} min={1} max={50} onChange={(rounds) => setCfg({ rounds })} />
+          <StepRow label="준비" value={cfg.prepareSec} display={cfg.prepareSec ? formatSeconds(cfg.prepareSec) : '없음'} step={5} min={0} max={30} onChange={(prepareSec) => setCfg({ prepareSec })} />
         </div>
-        <p className="muted center">총 {formatSeconds(Math.round(intervalTotalMs(cfg) / 1000))}</p>
-        <button type="button" className="btn btn-primary btn-xl" onClick={t.start}>
-          ▶ 시작
+        <button type="button" className="btn btn-primary btn-lg btn-block" onClick={t.start}>
+          <Icon name="play" size={16} /> 시작 · 총 {formatSeconds(Math.round(intervalTotalMs(cfg) / 1000))}
         </button>
       </div>
     );
   }
 
   const progress = ph.phaseTotalMs > 0 ? ph.remainingMs / ph.phaseTotalMs : 0;
+  const nextLabel =
+    ph.phase === 'prepare'
+      ? `다음 · 운동 ${formatSeconds(cfg.workSec)}`
+      : ph.phase === 'work'
+        ? ph.round < cfg.rounds
+          ? cfg.restSec > 0
+            ? `다음 · 휴식 ${formatSeconds(cfg.restSec)}`
+            : `다음 · ${ph.round + 1}라운드`
+          : '마지막 라운드!'
+        : ph.phase === 'rest'
+          ? `다음 · ${ph.round + 1}라운드 운동`
+          : '수고했어요';
+
   return (
     <div className="timer-pane">
-      <div className={`panel panel-${ph.phase}`} aria-label="인터벌 타이머">
-        <p className="panel-label">{PHASE_LABEL[ph.phase]}</p>
-        <p className="big-time">{formatCountdown(ph.remainingMs)}</p>
-        <div className="progress">
-          <div className="progress-bar" style={{ width: `${progress * 100}%` }} />
+      <div className={`stage stage-${ph.phase}`} role="timer" aria-label="인터벌 타이머">
+        <div className="stage-top">
+          <span className="stage-phase">{PHASE_LABEL[ph.phase]}</span>
+          <span className="stage-round num">
+            {ph.round} / {cfg.rounds}
+          </span>
         </div>
-        <p className="panel-next">
-          라운드 {ph.round} / {cfg.rounds} · 전체 남은 시간 {formatCountdown(intervalTotalMs(cfg) - t.elapsed)}
-        </p>
+        <div className="stage-ring">
+          <Ring size={250} stroke={10} progress={progress} />
+          <span className="stage-time num">{formatCountdown(ph.remainingMs)}</span>
+        </div>
+        <div className="stage-bottom">
+          <span>{nextLabel}</span>
+          <span className="num">남은 시간 {formatCountdown(intervalTotalMs(cfg) - t.elapsed)}</span>
+        </div>
       </div>
-      <TimerControls t={t} done={ph.phase === 'done'} />
+      <Controls t={t} done={ph.phase === 'done'} />
     </div>
   );
 }
@@ -224,7 +269,7 @@ function CountdownTimer({ report }: { report: Report }) {
   const done = t.started && remaining <= 0;
 
   const setDuration = (sec: number) => {
-    const next = Math.max(1, sec);
+    const next = Math.max(5, sec);
     setDurationState(next);
     savePrefs({ countdownSec: next });
   };
@@ -242,40 +287,19 @@ function CountdownTimer({ report }: { report: Report }) {
   if (!t.started) {
     return (
       <div className="timer-pane">
-        <div className="chip-row">
+        <div className="chip-wrap">
           {COUNTDOWN_PRESETS.map((sec) => (
-            <button
-              key={sec}
-              type="button"
-              className={`chip chip-preset${durationSec === sec ? ' chip-current' : ''}`}
-              onClick={() => setDuration(sec)}
-            >
+            <button key={sec} type="button" className={`chip${durationSec === sec ? ' is-on' : ''}`} onClick={() => setDuration(sec)}>
               {formatSeconds(sec)}
             </button>
           ))}
         </div>
-        <div className="field-grid">
-          <label className="field">
-            <span>분</span>
-            <NumberField
-              value={Math.floor(durationSec / 60)}
-              max={180}
-              label="분"
-              onChange={(m) => setDuration(m * 60 + (durationSec % 60))}
-            />
-          </label>
-          <label className="field">
-            <span>초</span>
-            <NumberField
-              value={durationSec % 60}
-              max={59}
-              label="초"
-              onChange={(s) => setDuration(Math.floor(durationSec / 60) * 60 + s)}
-            />
-          </label>
+        <div className="group">
+          <StepRow label="분" value={Math.floor(durationSec / 60)} display={`${Math.floor(durationSec / 60)}분`} step={1} min={0} max={180} onChange={(m) => setDuration(m * 60 + (durationSec % 60))} />
+          <StepRow label="초" value={durationSec % 60} display={`${durationSec % 60}초`} step={5} min={0} max={55} onChange={(s) => setDuration(Math.floor(durationSec / 60) * 60 + s)} />
         </div>
-        <button type="button" className="btn btn-primary btn-xl" onClick={t.start}>
-          ▶ {formatSeconds(durationSec)} 시작
+        <button type="button" className="btn btn-primary btn-lg btn-block" onClick={t.start}>
+          <Icon name="play" size={16} /> {formatSeconds(durationSec)} 시작
         </button>
       </div>
     );
@@ -283,19 +307,24 @@ function CountdownTimer({ report }: { report: Report }) {
 
   return (
     <div className="timer-pane">
-      <div className={`panel ${done ? 'panel-done' : 'panel-rest'}`} aria-label="카운트다운">
-        <p className="panel-label">{done ? '끝!' : '카운트다운'}</p>
-        <p className="big-time">{formatCountdown(remaining)}</p>
-        <div className="progress">
-          <div className="progress-bar" style={{ width: `${Math.max(0, remaining / (durationSec * 1000)) * 100}%` }} />
+      <div className={`stage ${done ? 'stage-done' : 'stage-rest'}`} role="timer" aria-label="카운트다운">
+        <div className="stage-top">
+          <span className="stage-phase">{done ? '끝!' : '카운트다운'}</span>
+          <span className="stage-round num">{formatSeconds(durationSec)}</span>
+        </div>
+        <div className="stage-ring">
+          <Ring size={250} stroke={10} progress={Math.max(0, remaining / (durationSec * 1000))} />
+          <span className="stage-time num">{formatCountdown(remaining)}</span>
+        </div>
+        <div className="stage-bottom">
+          {!done && (
+            <button type="button" className="stage-btn" onClick={() => setDuration(durationSec + 30)}>
+              +30초
+            </button>
+          )}
         </div>
       </div>
-      {!done && (
-        <button type="button" className="btn btn-block" onClick={() => setDuration(durationSec + 30)}>
-          +30초
-        </button>
-      )}
-      <TimerControls t={t} done={done} />
+      <Controls t={t} done={done} />
     </div>
   );
 }
@@ -306,73 +335,52 @@ function Stopwatch({ report }: { report: Report }) {
 
   return (
     <div className="timer-pane">
-      <div className="panel" aria-label="스톱워치">
-        <p className="panel-label">스톱워치</p>
-        <p className="big-time">{formatElapsed(t.elapsed, true)}</p>
+      <div className="stage stage-watch" role="timer" aria-label="스톱워치">
+        <span className="stage-watch-time num">{formatElapsed(t.elapsed, true)}</span>
       </div>
-      <div className="btn-row">
+      <div className="timer-controls">
         {t.clock.running ? (
-          <>
-            <button type="button" className="btn btn-xl" onClick={() => setLaps((l) => [t.elapsed, ...l])}>
-              랩
-            </button>
-            <button type="button" className="btn btn-primary btn-xl" onClick={t.pause}>
-              정지
-            </button>
-          </>
+          <button type="button" className="round-btn" onClick={() => setLaps((l) => [t.elapsed, ...l])}>
+            랩
+          </button>
         ) : (
-          <>
-            <button
-              type="button"
-              className="btn btn-xl"
-              disabled={!t.started}
-              onClick={() => {
-                t.reset();
-                setLaps([]);
-              }}
-            >
-              리셋
-            </button>
-            <button type="button" className="btn btn-primary btn-xl" onClick={t.start}>
-              {t.started ? '계속' : '▶ 시작'}
-            </button>
-          </>
+          <button
+            type="button"
+            className="round-btn"
+            disabled={!t.started}
+            onClick={() => {
+              t.reset();
+              setLaps([]);
+            }}
+          >
+            리셋
+          </button>
         )}
+        {t.clock.running ? (
+          <button type="button" className="round-btn is-danger" aria-label="정지" onClick={t.pause}>
+            <Icon name="pause" size={30} strokeWidth={3} />
+          </button>
+        ) : (
+          <button type="button" className="round-btn is-primary" aria-label={t.started ? '계속' : '시작'} onClick={t.start}>
+            <Icon name="play" size={28} />
+          </button>
+        )}
+        <span className="round-btn is-ghost" aria-hidden="true" />
       </div>
       {laps.length > 0 && (
-        <ol className="lap-list">
+        <ol className="group lap-list">
           {laps.map((total, i) => {
             const prev = laps[i + 1] ?? 0;
             return (
-              <li key={laps.length - i}>
-                <span>랩 {laps.length - i}</span>
-                <span className="mono">{formatElapsed(total - prev, true)}</span>
-                <span className="mono muted">{formatElapsed(total, true)}</span>
+              <li key={laps.length - i} className="group-row">
+                <span className="group-row-main">랩 {laps.length - i}</span>
+                <span className="num">{formatElapsed(total - prev, true)}</span>
+                <span className="num c-3">{formatElapsed(total, true)}</span>
               </li>
             );
           })}
         </ol>
       )}
-    </div>
-  );
-}
-
-function TimerControls({ t, done }: { t: ReturnType<typeof useTimerClock>; done: boolean }) {
-  return (
-    <div className="btn-row">
-      <button type="button" className="btn btn-xl" onClick={t.reset}>
-        리셋
-      </button>
-      {!done &&
-        (t.clock.running ? (
-          <button type="button" className="btn btn-primary btn-xl" onClick={t.pause}>
-            일시정지
-          </button>
-        ) : (
-          <button type="button" className="btn btn-primary btn-xl" onClick={t.start}>
-            계속
-          </button>
-        ))}
     </div>
   );
 }

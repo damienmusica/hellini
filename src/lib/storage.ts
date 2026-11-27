@@ -1,28 +1,58 @@
-import { seedRoutines } from './seed';
-import type { AppState, Settings } from './types';
+import { MAIN_PLACE_ID, mainPlace } from './places';
+import type { AppState, Place, Settings } from './types';
 
-const KEY = 'hellini:v1';
+const KEY = 'hellini:v4';
+/** 이전 버전 저장소. 읽기만 하고 지우지 않는다 (되돌릴 수 있게) */
+const LEGACY_KEYS = ['hellini:v3', 'hellini:v2'];
 
-const defaultSettings: Settings = { sound: true, vibrate: true };
+export const defaultSettings: Settings = {
+  sound: true,
+  vibrate: true,
+  defaultRestSec: 90,
+  barKg: 20,
+  weeklyGoal: 3,
+  placeId: MAIN_PLACE_ID,
+};
 
 export function defaultState(): AppState {
-  return { version: 1, routines: seedRoutines(), history: [], active: null, settings: { ...defaultSettings } };
+  return {
+    version: 4,
+    onboarded: false,
+    routines: [],
+    history: [],
+    active: null,
+    customExercises: [],
+    places: [mainPlace()],
+    body: [],
+    profile: {},
+    settings: { ...defaultSettings },
+  };
 }
 
 function isObject(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null;
 }
 
-/** 저장된 JSON이나 가져온 백업 파일을 검사한다. 모양이 다르면 null */
+/** 저장된 JSON이나 가져온 백업 파일을 검사한다. 옛 버전(v2·v3)은 빠진 칸을 채워 올린다. 모양이 다르면 null */
 export function parseState(x: unknown): AppState | null {
-  if (!isObject(x) || x.version !== 1) return null;
+  if (!isObject(x) || (x.version !== 2 && x.version !== 3 && x.version !== 4)) return null;
   if (!Array.isArray(x.routines) || !Array.isArray(x.history)) return null;
+  const places = (Array.isArray(x.places) ? (x.places as Place[]) : []).filter((p) => isObject(p) && typeof p.id === 'string');
+  if (!places.some((p) => p.id === MAIN_PLACE_ID)) places.unshift(mainPlace());
+  const settings: Settings = { ...defaultSettings, ...(isObject(x.settings) ? (x.settings as Partial<Settings>) : {}) };
+  if (!places.some((p) => p.id === settings.placeId)) settings.placeId = MAIN_PLACE_ID;
+  const body = (Array.isArray(x.body) ? (x.body as AppState['body']) : []).filter((b) => isObject(b) && typeof b.weightKg === 'number');
   return {
-    version: 1,
+    version: 4,
+    onboarded: x.onboarded === true,
     routines: x.routines as AppState['routines'],
     history: x.history as AppState['history'],
     active: isObject(x.active) ? (x.active as unknown as AppState['active']) : null,
-    settings: { ...defaultSettings, ...(isObject(x.settings) ? (x.settings as Partial<Settings>) : {}) },
+    customExercises: Array.isArray(x.customExercises) ? (x.customExercises as AppState['customExercises']) : [],
+    places: places.map((p) => ({ ...p, unavailable: Array.isArray(p.unavailable) ? p.unavailable : [], swaps: isObject(p.swaps) ? p.swaps : {} })),
+    body: [...body].sort((a, b) => b.date - a.date),
+    profile: isObject(x.profile) ? (x.profile as AppState['profile']) : {},
+    settings,
   };
 }
 
@@ -30,6 +60,7 @@ export function loadState(): AppState {
   let raw: string | null = null;
   try {
     raw = localStorage.getItem(KEY);
+    for (const k of LEGACY_KEYS) if (raw === null) raw = localStorage.getItem(k);
   } catch {
     return defaultState();
   }
